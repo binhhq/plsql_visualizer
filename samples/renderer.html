@@ -282,6 +282,28 @@
   .selected .e-write, .selected .e-call, .selected .e-flag, .selected .e-trig { stroke-width: 3.2; }
   .searchhit rect { stroke: var(--c-trace); stroke-width: 2.5; }
 
+  /* Typeahead over procedures. Anchored to the input so the list hangs under it
+     without pushing the toolbar around as matches come and go. */
+  .finder { position: relative; }
+  .proc-menu {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+    width: 280px; max-height: 260px; overflow-y: auto;
+    margin: 0; padding: 4px 0; list-style: none;
+    background: var(--ground); border: 1px solid var(--hairline);
+    border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
+  }
+  .proc-menu.open { display: block; }
+  .proc-menu li {
+    padding: 7px 10px; font-size: 11.5px; cursor: pointer;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink);
+  }
+  .proc-menu li + li { border-top: 1px solid var(--chrome); }
+  .proc-menu li.active, .proc-menu li:hover { background: var(--c-proc-fill); }
+  .proc-menu .pkg { color: var(--c-proc-ink); font-weight: 600; }
+  .proc-menu .dot { color: var(--dim); }
+  .proc-menu .none { color: var(--muted); cursor: default; font-style: italic; }
+  .proc-menu .none:hover { background: none; }
+
   .scope-chip {
     display: none; align-items: center; gap: 7px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -330,13 +352,16 @@
       <small id="entry-label"></small>
     </div>
 
-    <input type="search" id="search" list="package-list" autocomplete="off"
-           placeholder="filter by package…" aria-label="Filter the graph to a package" />
-    <datalist id="package-list"></datalist>
+    <div class="finder">
+      <input type="search" id="search" autocomplete="off" role="combobox"
+             aria-expanded="false" aria-controls="proc-menu" aria-autocomplete="list"
+             placeholder="jump to procedure…" aria-label="Jump to a procedure" />
+      <ul class="proc-menu" id="proc-menu" role="listbox" aria-label="Matching procedures"></ul>
+    </div>
 
     <span class="scope-chip" id="scope-chip">
       <span id="scope-text"></span>
-      <button type="button" id="scope-clear" aria-label="Clear package filter">×</button>
+      <button type="button" id="scope-clear" aria-label="Clear the current focus">×</button>
     </span>
 
     <div class="chips" role="group" aria-label="Highlight by confidence">
@@ -774,14 +799,18 @@
   });
   packages.sort();
 
-  var dl = document.getElementById("package-list");
-  packages.forEach(function (p) {
-    var o = document.createElement("option");
-    o.value = p;
-    dl.appendChild(o);
+  // Every procedure the typeahead can jump to. A program unit carries `unit` and
+  // `subprogram` separately — only stores have a `name` — so the searchable
+  // label is built here, package first, letting a package name still find its
+  // subprograms.
+  var procedures = [];
+  IR.nodes.forEach(function (n) {
+    if (n.kind !== "program_unit") return;
+    var unit = n.unit || "";
+    var sub = n.subprogram || "";
+    procedures.push({ id: n.id, unit: unit, sub: sub, name: unit + "." + sub });
   });
-  document.getElementById("search").placeholder =
-    "filter by package… e.g. " + (packages[0] || "PKG_ORDER");
+  procedures.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
 
   function unitOf(nodeId) {
     var n = nodeById[nodeId];
@@ -809,11 +838,20 @@
     var matched = packages.filter(function (p) { return p.toLowerCase().indexOf(q) !== -1; });
     if (!matched.length) return { edges: [], inScope: [], matched: [] };
 
-    var isMine = function (nodeId) {
+    return scopeFrom(function (nodeId) {
       var u = unitOf(nodeId);
       return u != null && matched.indexOf(u) !== -1;
-    };
+    }, matched);
+  }
 
+  /**
+   * The inclusion rules above, applied to whatever "mine" means. A package query
+   * makes every subprogram in the package mine; focusing makes exactly one
+   * procedure mine. The rules do not change with the granularity — in
+   * particular a focused procedure still drags in the trigger-induced writes its
+   * own DML sets off, because those are the writes nobody can see in the source.
+   */
+  function scopeFrom(isMine, matched) {
     var picked = [];
     var writtenByMine = {};
 
@@ -833,6 +871,23 @@
 
     picked.sort(function (a, b) { return (a.step || 0) - (b.step || 0); });
     return { edges: picked, inScope: matched, matched: matched };
+  }
+
+  /**
+   * One procedure and what it touches. Selecting is what reveals: until a
+   * procedure is picked the graph shows everything, and picking a different one
+   * replaces the view rather than adding to it.
+   */
+  function computeFocus(nodeId) {
+    var n = nodeById[nodeId];
+    if (!n) return { edges: [], inScope: [], matched: [] };
+    // A program unit has `unit` + `subprogram`; only stores carry `name`.
+    var label = n.kind === "program_unit"
+      ? (n.unit || "") + "." + (n.subprogram || "")
+      : n.name;
+    var scope = scopeFrom(function (id) { return id === nodeId; }, [label]);
+    scope.focusId = nodeId;
+    return scope;
   }
 
   // --------------------------------------------------------------- layout
@@ -960,7 +1015,13 @@
   var layerEdges = document.getElementById("layer-edges");
   var nodeEls = {}, edgeEls = {};
 
-  function drawNodes(inScope) {
+  /**
+   * `isOutside` decides which program units are recessive. It is a predicate
+   * rather than a package list because "outside" means different things at
+   * different granularities: everything in another package, or — once a
+   * procedure is focused — every procedure but that one.
+   */
+  function drawNodes(isOutside) {
     layerNodes.textContent = "";
     nodeEls = {};
 
@@ -968,7 +1029,7 @@
       var n = nodeById[id];
       if (!n) return;
       var b = box[id];
-      var outside = n.kind === "program_unit" && inScope && inScope.indexOf(n.unit) === -1;
+      var outside = n.kind === "program_unit" && !!isOutside && isOutside(n);
 
       var g = el("g", { class: "node", tabindex: "0", role: "button" });
       var cls = n.kind === "program_unit"
@@ -1003,6 +1064,22 @@
 
       layerNodes.appendChild(g);
       nodeEls[id] = g;
+      if (n.kind === "program_unit") bindUnit(n, g);
+    });
+  }
+
+  /**
+   * Clicking a procedure is what reveals the tables it writes. Clicking the one
+   * already focused clears the focus, so the same gesture gets back out.
+   */
+  function bindUnit(n, g) {
+    var pick = function (ev) {
+      ev.preventDefault();
+      focusUnit(state.focusId === n.id ? null : n.id);
+    };
+    g.addEventListener("click", pick);
+    g.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") pick(ev);
     });
   }
 
@@ -1082,14 +1159,19 @@
 
   // ---------------------------------------------------------------- state
   var state = { edges: allEdges, offstage: [], scoped: allEdges, order: "static",
-                inScope: null, pos: 0, selected: null, playing: false, filters: {} };
+                inScope: null, pos: 0, selected: null, playing: false, filters: {},
+                focusId: null };
 
   var scrub = document.getElementById("scrub");
   var canvas = document.querySelector(".canvas");
 
+  /**
+   * Rebuilds the view. A focused procedure wins over a typed query: picking one
+   * from the menu clears the box, so the two are never both live.
+   */
   function applyScope(query) {
     stop();
-    var scope = computeScope(query);
+    var scope = state.focusId ? computeFocus(state.focusId) : computeScope(query);
     state.scoped = scope.edges;
     state.inScope = scope.inScope;
     state.selected = null;
@@ -1104,7 +1186,8 @@
     if (scope.inScope && scope.matched.length) {
       chip.classList.add("on");
       document.getElementById("scope-text").textContent =
-        "scope: " + scope.matched.join(", ") + " · " + scope.edges.length + " edges";
+        (state.focusId ? "focus: " : "scope: ")
+        + scope.matched.join(", ") + " · " + scope.edges.length + " edges";
     } else {
       chip.classList.remove("on");
     }
@@ -1134,7 +1217,12 @@
     var seqOf = {};
     state.edges.forEach(function (e, i) { seqOf[e.id] = i + 1; });
     layout(drawn);
-    drawNodes(state.inScope);
+    // Focus narrows "outside" from a package to a single procedure.
+    var focusId = state.focusId;
+    var inScope = state.inScope;
+    drawNodes(focusId
+      ? function (n) { return n.id !== focusId; }
+      : (inScope ? function (n) { return inScope.indexOf(n.unit) === -1; } : null));
     drawEdges(drawn, seqOf);
 
     state.pos = state.edges.length;
@@ -1361,16 +1449,101 @@
   chip("chip-branch", "branch");
 
   var search = document.getElementById("search");
-  var debounce = null;
+  var menu = document.getElementById("proc-menu");
+  var matches = [];
+  var cursor = -1;
+
+  /** Focuses a procedure, or clears the focus when passed null. */
+  function focusUnit(id) {
+    state.focusId = id;
+    search.value = "";
+    closeMenu();
+    applyScope("");
+    if (id && nodeEls[id]) nodeEls[id].focus();
+  }
+
+  function closeMenu() {
+    menu.classList.remove("open");
+    menu.textContent = "";
+    search.setAttribute("aria-expanded", "false");
+    matches = [];
+    cursor = -1;
+  }
+
+  function markCursor() {
+    Array.prototype.forEach.call(menu.children, function (li, i) {
+      li.classList.toggle("active", i === cursor);
+      li.setAttribute("aria-selected", i === cursor ? "true" : "false");
+    });
+  }
+
+  // Package first, then subprogram, so typing either narrows sensibly.
+  function openMenu(q) {
+    var needle = q.toLowerCase();
+    matches = procedures.filter(function (p) {
+      return p.name.toLowerCase().indexOf(needle) !== -1;
+    }).slice(0, 8);
+
+    menu.textContent = "";
+    if (!matches.length) {
+      var none = document.createElement("li");
+      none.classList.add("none");
+      none.textContent = 'no procedure matches "' + q + '"';
+      menu.appendChild(none);
+    } else {
+      matches.forEach(function (p, i) {
+        var li = document.createElement("li");
+        li.setAttribute("role", "option");
+        var pkg = document.createElement("span");
+        pkg.classList.add("pkg");
+        pkg.textContent = p.unit;
+        var dot = document.createElement("span");
+        dot.classList.add("dot");
+        dot.textContent = ".";
+        li.appendChild(pkg);
+        li.appendChild(dot);
+        li.appendChild(document.createTextNode(p.sub));
+        // mousedown, not click: blurring the input on click would close the menu
+        // before the selection lands.
+        li.addEventListener("mousedown", function (ev) {
+          ev.preventDefault();
+          focusUnit(p.id);
+        });
+        li.addEventListener("mouseenter", function () { cursor = i; markCursor(); });
+        menu.appendChild(li);
+      });
+    }
+    cursor = matches.length ? 0 : -1;
+    markCursor();
+    menu.classList.add("open");
+    search.setAttribute("aria-expanded", "true");
+  }
+
   search.addEventListener("input", function () {
-    clearTimeout(debounce);
     var v = search.value.trim();
-    debounce = setTimeout(function () { applyScope(v); }, 160);
+    if (!v) { closeMenu(); return; }
+    openMenu(v);
   });
 
+  search.addEventListener("keydown", function (ev) {
+    if (!menu.classList.contains("open")) return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!matches.length) return;
+      cursor = (cursor + (ev.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+      markCursor();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      if (matches[cursor]) focusUnit(matches[cursor].id);
+    } else if (ev.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  search.addEventListener("blur", function () { setTimeout(closeMenu, 120); });
+
   document.getElementById("scope-clear").addEventListener("click", function () {
-    search.value = "";
-    applyScope("");
+    focusUnit(null);
     search.focus();
   });
 

@@ -21,7 +21,8 @@ logic = logic
   .replace(/  var dl = document[\s\S]*?\n  \}\);\n/, "")
   .replace(/  document\.getElementById\("search"\)\.placeholder =[\s\S]*?;\n/, "");
 
-const run = new Function("IR", logic + "\n return { computeScope, packages, unitOf, allEdges };");
+const run = new Function("IR",
+  logic + "\n return { computeScope, computeFocus, packages, procedures, unitOf, allEdges };");
 const api = run(IR);
 
 console.log("packages detected:", api.packages.join(", "));
@@ -90,5 +91,36 @@ check("PKG_DYNAMIC keeps the dynamic-unknown write", has("PKG_DYNAMIC", dynamicE
 // A scope is a subset of the graph, never a rewrite of it.
 const allIds = api.allEdges.map((e) => e.id);
 check("scoped edges are a subset of the IR", idsOf("PKG_ORDER").every((id) => allIds.includes(id)), true);
+
+// ---- focusing one procedure ------------------------------------------------
+// Focus is the same inclusion rules at a finer granularity, not a different
+// algorithm. What must NOT change is that a procedure still drags in the
+// trigger-induced writes its own DML sets off — those appear in nobody's
+// source, so dropping them would recreate the blind spot this tool exists to
+// remove.
+console.log("\nprocedure focus:");
+check("procedures are PKG.PROC", api.procedures.map((p) => p.name), [
+  "PKG_DYNAMIC.LOG_DYNAMIC", "PKG_ORDER.MARK_FILLED", "PKG_ORDER.SUBMIT",
+  "PKG_POSITION.APPLY_FILL", "PKG_VALIDATE.CHECK_ORDER",
+]);
+
+const submitId = api.procedures.find((p) => p.name === "PKG_ORDER.SUBMIT").id;
+const focus = api.computeFocus(submitId);
+console.log("  PKG_ORDER.SUBMIT →", focus.edges.length, "edges;",
+  "matched:", JSON.stringify(focus.matched));
+check("  focus names the procedure, not the package", focus.matched, ["PKG_ORDER.SUBMIT"]);
+check("  focus reports the node it is on", focus.focusId, submitId);
+
+const focusIds = focus.edges.map((e) => e.id);
+check("  focus keeps its trigger-induced consequence",
+  focusIds.includes(triggerEdge.id), true);
+check("  focus is narrower than its package",
+  focus.edges.length < api.computeScope("PKG_ORDER").edges.length, true);
+check("  every focused edge touches the procedure or a table it writes",
+  focus.edges.every((e) =>
+    e.from === submitId || e.to === submitId || e.confidence === "trigger-induced"), true);
+
+check("  an unknown node id focuses nothing",
+  api.computeFocus("PROC:NOPE").edges.length, 0);
 
 summary("scope-test");
