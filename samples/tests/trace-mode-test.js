@@ -45,6 +45,7 @@ global.document = {
   querySelector: (sel) => (sel === ".canvas" ? canvasEl : El("div")),
   createElement: (t) => El(t),
   createElementNS: (ns, t) => El(t),
+  createTextNode: (t) => { const e = El("#text"); e.textContent = t; return e; },
   addEventListener() {},
 };
 global.window = { addEventListener() {} };

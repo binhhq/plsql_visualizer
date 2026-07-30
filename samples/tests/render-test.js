@@ -42,6 +42,7 @@ global.document = {
   querySelector: (sel) => (sel === ".canvas" ? canvasEl : El("div")),
   createElement: (t) => El(t),
   createElementNS: (ns, t) => El(t),
+  createTextNode: (t) => { const e = El("#text"); e.textContent = t; return e; },
   addEventListener() {},
 };
 global.window = { addEventListener() {} };
@@ -83,9 +84,24 @@ function shot(label, expect) {
   return state;
 }
 
+const menu = idEl("proc-menu");
+
 function type(q) {
   search.value = q;
   search.dispatch("input", { target: search });
+}
+
+// What the typeahead is offering, as "PKG.PROC" strings.
+function offered() {
+  return menu.children
+    .filter((li) => !li.classList.contains("none"))
+    .map((li) => li.children.map((c) => c.textContent).join(""));
+}
+
+// Selecting is a mousedown, not a click — a click would blur the input and
+// close the menu before the choice landed.
+function pick(i) {
+  menu.children[i].dispatch("mousedown", { preventDefault() {} });
 }
 
 const FULL = { nodes: 13, edges: 15, empty: false, chip: null };
@@ -93,39 +109,60 @@ const FULL = { nodes: 13, edges: 15, empty: false, chip: null };
 console.log("initial render");
 shot("(no filter)", FULL);
 
-console.log("\npackage filter via input event:");
+// Typing offers procedures; it must NOT touch the graph. Naming a procedure is
+// not the same as choosing one, and revealing on keystroke was the behaviour
+// this replaced.
+console.log("\ntyping offers procedures and leaves the graph alone:");
 type("PKG_ORDER");
-shot('"PKG_ORDER"', { nodes: 9, edges: 10, empty: false, chip: "scope: PKG_ORDER · 10 edges" });
-type("pkg_validate");
-shot('"pkg_validate"', { nodes: 3, edges: 2, empty: false, chip: "scope: PKG_VALIDATE · 2 edges" });
-type("PKG_DYNAMIC");
-shot('"PKG_DYNAMIC"', { nodes: 4, edges: 3, empty: false, chip: "scope: PKG_DYNAMIC · 3 edges" });
+console.log("  offers:", JSON.stringify(offered()));
+check("    matches for \"PKG_ORDER\"", offered(), ["PKG_ORDER.MARK_FILLED", "PKG_ORDER.SUBMIT"]);
+shot("  graph untouched", FULL);
 
-// A query matching nothing must show the empty state and NO chip. computeScope
-// returns inScope [] here — truthy — so a naive `if (scope.inScope)` lights the
-// chip up with an empty package name. That regressed once; this pins it.
+type("submit");
+check("    matching on the subprogram half", offered(), ["PKG_ORDER.SUBMIT"]);
+
 type("tx9001");
-shot('"tx9001"', { nodes: 0, edges: 0, empty: true, chip: null });
-check("    no-match message names the packages",
-  idEl("noscope").textContent,
-  'No package matches "tx9001". Packages in this IR: PKG_DYNAMIC, PKG_ORDER, PKG_POSITION, PKG_VALIDATE');
+check("    no match offers nothing", offered(), []);
+check("    and says so", menu.children[0].textContent, 'no procedure matches "tx9001"');
+shot("  still untouched", FULL);
 
-type("");
-shot('""', FULL);
-
-console.log("\nclear button:");
-type("PKG_ORDER");
-idEl("scope-clear").dispatch("click");
-shot("after clear", FULL);
-check("    search box reset", search.value, "");
-
-console.log("\nscrub + counter after scoping to PKG_VALIDATE:");
+console.log("\nselecting a procedure scopes to it:");
 type("PKG_VALIDATE");
-console.log("  scrub.max =", JSON.stringify(idEl("scrub").max), " counter =", JSON.stringify(idEl("counter").textContent));
-// The scrub indexes the scoped edges, not the whole IR — otherwise stepping
+pick(0);
+shot('picked PKG_VALIDATE.CHECK_ORDER',
+  { nodes: 3, edges: 2, empty: false, chip: "focus: PKG_VALIDATE.CHECK_ORDER · 2 edges" });
+check("    search box cleared on pick", search.value, "");
+check("    menu closed", menu.classList.contains("open"), false);
+
+// The scrub indexes the focused edges, not the whole IR — otherwise stepping
 // walks off the end of what is drawn.
 check("    scrub.max", idEl("scrub").max, "2");
 check("    counter", idEl("counter").textContent, "step 2 / 2");
+
+// Picking another procedure replaces the view rather than adding to it.
+type("LOG_DYNAMIC");
+pick(0);
+// Three writes, one of them the dynamic-unknown target and one only the trace
+// could name — so focusing this procedure is what makes that pair visible.
+shot("picked PKG_DYNAMIC.LOG_DYNAMIC",
+  { nodes: 4, edges: 3, empty: false, chip: "focus: PKG_DYNAMIC.LOG_DYNAMIC · 3 edges" });
+
+console.log("\nclear button drops the focus:");
+idEl("scope-clear").dispatch("click");
+shot("after clear", FULL);
+
+// Clicking the focused procedure again is the way back out — the same gesture
+// in both directions, so there is no dead end.
+console.log("\nclicking a procedure node focuses it, clicking it again clears:");
+const unitNode = nodesLayer.children.find((g) =>
+  (g.attrs["aria-label"] || "").indexOf("PKG_VALIDATE.CHECK_ORDER") !== -1);
+unitNode.dispatch("click", { preventDefault() {} });
+shot("clicked the node", { nodes: 3, edges: 2, empty: false,
+  chip: "focus: PKG_VALIDATE.CHECK_ORDER · 2 edges" });
+nodesLayer.children
+  .find((g) => (g.attrs["aria-label"] || "").indexOf("PKG_VALIDATE.CHECK_ORDER") !== -1)
+  .dispatch("click", { preventDefault() {} });
+shot("clicked it again", FULL);
 
 // classList.toggle(name, undefined) flips instead of clearing, so an unset
 // filter used to invert .dimmed on every render — the graph strobed between
@@ -147,7 +184,8 @@ const discs = () => edgesLayer.children
 console.log("\nordinal discs:");
 check("    one per sequenced edge (static: all 15)", discs(), 15);
 type("PKG_VALIDATE");
-check("    rebuilt for the scoped sequence", discs(), 2);
-type("");
+pick(0);
+check("    renumbered from 1 for the focused sequence", discs(), 2);
+idEl("scope-clear").dispatch("click");
 
 summary("render-test");
