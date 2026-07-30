@@ -399,6 +399,11 @@ suite means the *honesty* rules hold, not just the happy path.
 4. `IrBuilder` (JGraphT) + `StepOrdinal`; emit IR; assert against `test-fixtures.md`.
 5. `StalenessChecker` (incremental re-extract).
 6. Generate a sample IR from the fixtures → hand to Claude Design for the renderer.
-7. Trace overlay: `TraceParser` + `trace_order` merge. **Done** — except the
-   renderer's `trace_order` toggle, which exists as a button with no handler
-   behind it, so a traced IR currently draws but cannot be re-ordered.
+7. Trace overlay: `TraceParser` + `trace_order` merge. **Done**, including the
+   renderer's `trace_order` toggle — a traced IR now re-orders on demand, and
+   edges present in the static IR but absent from the trace render with a
+   distinct `.notrun` treatment rather than disappearing.
+
+All 7 steps are complete. What's left beyond this build order: `DBMS_HPROF`
+(§5) is not started, so `call` edges never carry `trace_order` — only
+`write`/DML edges do today.
