@@ -8,9 +8,8 @@ Regenerate it after any extractor change:
 
 ```bash
 ./scripts/oracle-bootstrap.sh          # once, to build the fixture schema
-./mvnw -q exec:java \
-  -Dexec.mainClass=com.example.plsqlvisualizer.Cli \
-  -Dexec.args="--entry PKG_ORDER.SUBMIT --out samples/ir-fixtures.json"
+./mvnw -q spring-boot:run -Dspring-boot.run.arguments="\
+  --plsql.entry=PKG_ORDER.SUBMIT --plsql.out=samples/ir-fixtures.json"
 ```
 
 ## Why this sample and not a handwritten one

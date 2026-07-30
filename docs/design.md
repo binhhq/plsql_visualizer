@@ -375,7 +375,9 @@ plsql-dataflow-tool/
     graph/       IrBuilder (JGraphT), StepOrdinal
     freshness/   StalenessChecker (LAST_DDL_TIME), IrRefresher (decides
                  incremental vs full), IrSplicer + EdgeOwner (the merge)
-    Cli.java
+    config/      VisualizerProperties (binds plsql.* from application.yaml)
+    IrRunner.java              ← ApplicationRunner: one task per run, then exit
+    PlsqlVisualizerApplication.java
 ```
 
 ---

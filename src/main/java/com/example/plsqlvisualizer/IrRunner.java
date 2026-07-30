@@ -1,5 +1,6 @@
 package com.example.plsqlvisualizer;
 
+import com.example.plsqlvisualizer.config.VisualizerProperties;
 import com.example.plsqlvisualizer.db.DictionaryClient;
 import com.example.plsqlvisualizer.extract.DictionarySnapshot;
 import com.example.plsqlvisualizer.freshness.IrRefresher;
@@ -19,84 +20,87 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
 
 /**
- * Extracts the IR from a live schema and writes it to a file.
+ * Runs one extraction task at startup and lets the application exit.
  *
- * <pre>
- *   --url       JDBC url        (default jdbc:oracle:thin:@//localhost:1521/FREEPDB1)
- *   --user      schema to analyse, and to connect as
- *   --password  password
- *   --entry     UNIT.SUBPROGRAM to walk from; defaults to every uncalled unit
- *   --out       output file     (default target/ir.json)
- *   --check     existing IR to test for staleness instead of extracting
- *   --refresh   existing IR to bring up to date, re-reading only what changed;
- *               rewritten in place unless --out names somewhere else
- *   --trace     10046 trace file to overlay onto --ir; needs no database
- *   --ir        the IR --trace annotates
- *   --scenario  name recorded in meta.trace_source (default: the trace filename)
- * </pre>
+ * <p>Configured entirely through {@link VisualizerProperties} — see
+ * {@code application.yaml} for the settings and their defaults, and override per
+ * run with {@code --plsql.task=…} style arguments.
+ *
+ * <p>Progress goes to {@code System.out} rather than the logger on purpose: this
+ * output is the deliverable report a person reads, not diagnostics.
  *
  * <p>The renderer consumes the output file and nothing else — it never touches
  * the database (design.md §6).
  */
-public final class Cli {
+@Component
+@Profile("!test")
+public class IrRunner implements ApplicationRunner {
 
-    private static final String DEFAULT_URL = "jdbc:oracle:thin:@//localhost:1521/FREEPDB1";
+    private final VisualizerProperties props;
 
-    private Cli() {
+    public IrRunner(VisualizerProperties props) {
+        this.props = props;
     }
 
-    public static void main(String[] args) throws Exception {
-        Map<String, String> options = parse(args);
-
-        String url = options.getOrDefault("url", System.getenv().getOrDefault("ORACLE_URL", DEFAULT_URL));
-        String user = options.getOrDefault("user", System.getenv().getOrDefault("ORACLE_USER", "tscope_test"));
-        String password = options.getOrDefault("password",
-                System.getenv().getOrDefault("ORACLE_PASSWORD", "tscope"));
-        String entry = options.get("entry");
-        Path out = Path.of(options.getOrDefault("out", "target/ir.json"));
-        String check = options.get("check");
-        String refresh = options.get("refresh");
-
-        if (check != null) {
-            checkStaleness(url, user, password, Path.of(check));
-            return;
-        }
-
-        if (refresh != null) {
-            Path target = options.containsKey("out") ? out : Path.of(refresh);
-            refresh(url, user, password, Path.of(refresh), target, entry);
-            return;
-        }
-
-        String trace = options.get("trace");
-        if (trace != null) {
-            String irFile = options.get("ir");
-            if (irFile == null) {
-                throw new IllegalArgumentException("--trace needs --ir <existing ir.json>");
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        switch (props.task()) {
+            case CHECK -> checkStaleness(required("ir", props.ir()));
+            case REFRESH -> {
+                Path in = required("ir", props.ir());
+                refresh(in, props.out() == null ? in : props.out());
             }
-            Path target = options.containsKey("out") ? out : Path.of(irFile);
-            overlayTrace(Path.of(irFile), Path.of(trace), target,
-                    options.getOrDefault("scenario", Path.of(trace).getFileName().toString()));
-            return;
+            case TRACE -> {
+                Path in = required("ir", props.ir());
+                Path trace = required("trace-file", props.traceFile());
+                // scenario defaults to the trace filename, as the old --trace did.
+                overlayTrace(in, trace, props.out() == null ? in : props.out(),
+                        props.scenario() == null
+                                ? trace.getFileName().toString()
+                                : props.scenario());
+            }
+            case EXTRACT -> extract(props.out() == null ? Path.of("target/ir.json") : props.out());
         }
+    }
 
+    /**
+     * Fails before opening a connection when a task's required input is missing,
+     * naming the property so the message points at the fix.
+     */
+    private Path required(String name, Path value) {
+        if (value == null) {
+            throw new IllegalArgumentException("plsql.task="
+                    + props.task().name().toLowerCase(java.util.Locale.ROOT)
+                    + " needs plsql." + name + " to be set");
+        }
+        return value;
+    }
+
+    private void extract(Path out) throws Exception {
         Ir ir;
-        try (DictionaryClient client = DictionaryClient.connect(url, user, password)) {
-            ir = new IrBuilder(new DictionarySnapshot(client)).build(entry);
+        try (DictionaryClient client = connect()) {
+            ir = new IrBuilder(new DictionarySnapshot(client)).build(props.entry());
         }
 
         IrJson.write(ir, out);
         printSummary(ir, out);
     }
 
-    private static void checkStaleness(String url, String user, String password, Path irFile)
-            throws Exception {
+    private DictionaryClient connect() throws Exception {
+        VisualizerProperties.Oracle db = props.oracle();
+        return DictionaryClient.connect(db.url(), db.username(), db.password());
+    }
+
+    private void checkStaleness(Path irFile) throws Exception {
         Ir ir = IrJson.read(irFile);
         StalenessReport report;
-        try (DictionaryClient client = DictionaryClient.connect(url, user, password)) {
+        try (DictionaryClient client = connect()) {
             report = new StalenessChecker(client).check(ir);
         }
 
@@ -106,17 +110,18 @@ public final class Cli {
         report.removed().forEach(u -> System.out.printf("  removed : %s %s%n", u.type(), u.name()));
 
         if (!report.isFresh()) {
-            System.out.printf("Run --refresh %s to re-read just these units and splice them in.%n",
+            System.out.printf(
+                    "Run with --plsql.task=refresh --plsql.ir=%s to re-read just these units"
+                            + " and splice them in.%n",
                     irFile);
         }
     }
 
-    private static void refresh(String url, String user, String password, Path irFile, Path out,
-                                String entry) throws Exception {
+    private void refresh(Path irFile, Path out) throws Exception {
         Ir previous = IrJson.read(irFile);
         IrRefresher.Result result;
-        try (DictionaryClient client = DictionaryClient.connect(url, user, password)) {
-            result = new IrRefresher(client).refresh(previous, entry);
+        try (DictionaryClient client = connect()) {
+            result = new IrRefresher(client).refresh(previous, props.entry());
         }
 
         System.out.printf("%s  (%s)%n", result.report().summary(), irFile);
@@ -142,7 +147,7 @@ public final class Cli {
     }
 
     /** Overlays a 10046 trace on an existing IR. No database: the IR is the static truth. */
-    private static void overlayTrace(Path irFile, Path traceFile, Path out, String scenario)
+    private void overlayTrace(Path irFile, Path traceFile, Path out, String scenario)
             throws Exception {
         Ir ir = IrJson.read(irFile);
         List<TraceEvent> events = new TraceParser().parse(traceFile);
@@ -197,20 +202,5 @@ public final class Cli {
 
     private static long count(Ir ir, Confidence confidence) {
         return ir.edges().stream().map(Edge::confidence).filter(confidence::equals).count();
-    }
-
-    private static Map<String, String> parse(String[] args) {
-        Map<String, String> options = new java.util.LinkedHashMap<>();
-        for (int i = 0; i < args.length; i++) {
-            if (!args[i].startsWith("--")) {
-                throw new IllegalArgumentException("Unexpected argument: " + args[i]);
-            }
-            String key = args[i].substring(2);
-            if (i + 1 >= args.length) {
-                throw new IllegalArgumentException("Missing value for --" + key);
-            }
-            options.put(key, args[++i]);
-        }
-        return options;
     }
 }

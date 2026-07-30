@@ -1,3 +1,54 @@
 spring:
   application:
     name: plsql-visualizer
+  main:
+    # This is a run-once tool: it does one extraction and exits. Without this the
+    # webmvc starter on the classpath would start a server and the process would
+    # never come back. Set to `servlet` on the day a controller exists.
+    web-application-type: none
+    banner-mode: "off"
+    # "Starting…/No active profile set/Started in 0.5s" is logged by a logger in
+    # our own package, so raising root to warn does not silence it. This does,
+    # without having to mute the package we may want to log from.
+    log-startup-info: false
+
+# Spring's own startup chatter would bury the extraction report, which is the
+# thing a person actually reads here. Warnings and errors still come through.
+logging:
+  level:
+    root: warn
+    com.example.plsqlvisualizer: info
+
+plsql:
+  # extract  — read the schema, write a fresh IR
+  # check    — report whether `ir` still matches the schema
+  # refresh  — re-read only what changed and splice it into `ir`
+  # trace    — overlay `trace-file` onto `ir`; needs no database
+  task: extract
+
+  # The schema to analyse, and the credentials to read it with. The extractor
+  # connects AS the schema it inspects: the dictionary queries use USER_* views.
+  # Env vars keep working, and keep the names the old CLI used.
+  oracle:
+    url: ${ORACLE_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${ORACLE_USER:tscope_test}
+    password: ${ORACLE_PASSWORD:tscope}
+
+  # The settings below are deliberately absent rather than written empty: a key
+  # with no value binds to an empty string, not to null, which would read as a
+  # real (blank) entry point or scenario name and defeat the defaults. Set them
+  # here when you want a standing default, or per run on the command line.
+  #
+  #   entry: PKG_ORDER.SUBMIT   UNIT.SUBPROGRAM to walk from.
+  #                             Absent walks every uncalled unit.
+  #
+  #   out: target/ir.json       Where to write. Absent means the task chooses:
+  #                             `extract` writes target/ir.json, while `refresh`
+  #                             and `trace` rewrite their input in place. Setting
+  #                             it makes the in-place tasks write a copy instead.
+  #
+  #   ir: target/ir.json        The existing IR that check / refresh / trace read.
+  #
+  #   trace-file: run.trc       The 10046 trace `trace` overlays onto `ir`.
+  #   scenario: place_order     Recorded in meta.trace_source. Absent uses the
+  #                             trace file's own name.
