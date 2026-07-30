@@ -41,3 +41,43 @@ correctly has nothing left to special-case:
 - `TBL:__UNKNOWN__` is a single shared sentinel node. Every unresolved write in
   the schema converges on it, so its in-degree grows with real code — it should
   not be laid out as an ordinary leaf.
+
+## The renderer
+
+`renderer.html` is the delivered renderer — one self-contained file, no build, no
+network. Open it directly. It embeds its IR in `<script id="ir-data">`, so the
+page and the data it draws travel together; to point it at a different IR, swap
+the contents of that block.
+
+Beyond the §8 brief (step-through reveal, confidence treatments, freshness
+banner) it carries a **package filter**. Type a package name — substring,
+case-insensitive — and the graph narrows to that package's subgraph:
+
+- every write and outbound call from the package's own subprograms;
+- **inbound** calls, so "who calls this?" is answerable without clearing the filter;
+- trigger-induced writes fired by tables the package writes. These are
+  consequences of its own DML; hiding them would rebuild exactly the blind spot
+  the tool exists to remove.
+
+The step slider re-indexes to the scoped edges, so stepping never walks off the
+end of what is drawn. A query matching no package shows an empty state naming
+the packages that do exist, rather than an empty graph.
+
+## Tests
+
+The renderer has no framework and no dependencies; the tests run on plain `node`
+and both exit non-zero on failure.
+
+```bash
+node samples/tests/scope-test.js     # the scope algorithm, against the real IR
+node samples/tests/render-test.js    # the whole renderer, against a DOM stub
+```
+
+Both read their subject out of `renderer.html` itself — the real `computeScope`
+source and the real IIFE, not a copy — so they cannot pass against code that has
+since moved on. If a test dies with *"the anchors moved"*, a refactor renamed the
+landmark it slices on; re-point the `indexOf` anchors in the test, do not
+reintroduce a copy of the logic.
+
+`scope-test` asserts the scope contract above, not just edge counts: counts alone
+would still pass if the wrong edges were picked.
