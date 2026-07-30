@@ -261,6 +261,16 @@
   /* Reveal + emphasis. Opacity is the only thing that animates. */
   .hidden { opacity: 0; pointer-events: none; }
   .dimmed { opacity: .16; }
+
+  /* Statically possible, and this run did not do it. Distinct from .dimmed —
+     that means "filtered out of view", this means "never happened". Same
+     opacity for both would collapse two different facts into one look. */
+  .notrun { opacity: .5; }
+  .notrun .e-write, .notrun .e-call, .notrun .e-flag, .notrun .e-trig {
+    stroke: var(--dim); stroke-width: 1.4; stroke-dasharray: 2 4;
+  }
+  .notrun .mk-write, .notrun .mk-call, .notrun .mk-flag, .notrun .mk-trig { fill: var(--dim); }
+  .notrun .e-badge, .notrun .e-guard, .notrun .e-tag { fill: var(--dim); }
   .selected .e-write, .selected .e-call, .selected .e-flag, .selected .e-trig { stroke-width: 3.2; }
   .searchhit rect { stroke: var(--c-trace); stroke-width: 2.5; }
 
@@ -362,6 +372,10 @@
         <div class="row"><svg width="14" height="10" aria-hidden="true"><rect width="14" height="10" rx="3" class="c-alert" /></svg> unknown target</div>
         <div class="row"><svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" class="e-trig" /></svg> trigger-induced</div>
         <div class="row"><span class="mono">↻</span> runs in a loop</div>
+        <div class="row" id="legend-notrun" style="display:none">
+          <svg width="16" height="8" aria-hidden="true"><g class="notrun"><line x1="0" y1="4" x2="16" y2="4" class="e-write" /></g></svg>
+          never ran in this trace
+        </div>
       </div>
     </div>
 
@@ -388,11 +402,11 @@
 <script type="application/json" id="ir-data">
 {
   "meta" : {
-    "schema_version" : "1.0",
+    "schema_version" : "1.1",
     "db" : "TSCOPE_TEST",
     "entry_point" : "TSCOPE_TEST.PKG_ORDER.SUBMIT",
     "static_source" : {
-      "generated_at" : "2026-07-30T06:44:27.318565Z",
+      "generated_at" : "2026-07-30T10:50:14.890517Z",
       "units" : [ {
         "owner" : "TSCOPE_TEST",
         "name" : "PKG_DYNAMIC",
@@ -407,12 +421,12 @@
         "owner" : "TSCOPE_TEST",
         "name" : "PKG_POSITION",
         "type" : "PACKAGE BODY",
-        "last_ddl_time" : "2026-07-29T04:39:51Z"
+        "last_ddl_time" : "2026-07-30T02:55:08Z"
       }, {
         "owner" : "TSCOPE_TEST",
         "name" : "PKG_VALIDATE",
         "type" : "PACKAGE BODY",
-        "last_ddl_time" : "2026-07-29T23:41:49Z"
+        "last_ddl_time" : "2026-07-30T02:33:56Z"
       }, {
         "owner" : "TSCOPE_TEST",
         "name" : "TRG_ORDER_AUDIT",
@@ -421,7 +435,9 @@
       } ]
     },
     "trace_source" : {
-      "present" : false
+      "present" : true,
+      "captured_at" : "2026-07-30T10:35:56Z",
+      "scenario" : "place_order_hose"
     }
   },
   "nodes" : [ {
@@ -487,6 +503,11 @@
     "kind" : "table",
     "schema" : "TSCOPE_TEST",
     "name" : "ORDER_AUDIT"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.ORDER_LOG_202607",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "ORDER_LOG_202607"
   } ],
   "edges" : [ {
     "id" : "e1",
@@ -510,7 +531,9 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 1,
+    "trace_count" : 1
   }, {
     "id" : "e3",
     "type" : "write",
@@ -523,7 +546,9 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 2,
+    "trace_count" : 1
   }, {
     "id" : "e4",
     "type" : "write",
@@ -536,7 +561,9 @@
     "confidence" : "trigger-induced",
     "resolved_via" : "direct",
     "via_trigger" : "TRG_ORDER_AUDIT",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 3,
+    "trace_count" : 1
   }, {
     "id" : "e5",
     "type" : "write",
@@ -549,7 +576,9 @@
     "confidence" : "resolved",
     "resolved_via" : "synonym",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 4,
+    "trace_count" : 1
   }, {
     "id" : "e6",
     "type" : "write",
@@ -562,7 +591,9 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 5,
+    "trace_count" : 1
   }, {
     "id" : "e7",
     "type" : "write",
@@ -576,7 +607,9 @@
     "resolved_via" : "direct",
     "reachability" : "branch-conditional",
     "guard" : "IF p_market = 'HOSE'",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 6,
+    "trace_count" : 1
   }, {
     "id" : "e8",
     "type" : "call",
@@ -621,7 +654,9 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 8,
+    "trace_count" : 1
   }, {
     "id" : "e12",
     "type" : "write",
@@ -634,7 +669,9 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "loop",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 9,
+    "trace_count" : 1
   }, {
     "id" : "e13",
     "type" : "call",
@@ -657,7 +694,22 @@
     "confidence" : "resolved",
     "resolved_via" : "direct",
     "reachability" : "unconditional",
-    "provenance" : [ "static" ]
+    "provenance" : [ "static", "trace" ],
+    "trace_order" : 10,
+    "trace_count" : 1
+  }, {
+    "id" : "t1",
+    "type" : "write",
+    "op" : "INSERT",
+    "from" : "PROC:TSCOPE_TEST.PKG_DYNAMIC.LOG_DYNAMIC",
+    "to" : "TBL:TSCOPE_TEST.ORDER_LOG_202607",
+    "sql_id" : "0f90zx1jvsgas",
+    "confidence" : "trace-resolved",
+    "reachability" : "unconditional",
+    "provenance" : [ "trace" ],
+    "trace_order" : 7,
+    "trace_count" : 1,
+    "resolves" : "e9"
   } ]
 }
 </script>
@@ -676,6 +728,30 @@
   var allEdges = IR.edges.slice().sort(function (a, b) { return (a.step || 0) - (b.step || 0); });
   var nodeById = {};
   IR.nodes.forEach(function (n) { nodeById[n.id] = n; });
+
+  // Does this IR carry a runtime trace? Only then is trace ordering meaningful.
+  var hasTrace = allEdges.some(function (e) { return e.trace_order != null; });
+
+  /**
+   * Splits an edge set into the sequence to step through and the edges that
+   * exist but have no place in it.
+   *
+   * Static order includes everything — that is the point of a superset. Trace
+   * order can only sequence what actually ran, so a statically-present write the
+   * traced run never reached has no position. It is still drawn, permanently
+   * recessive: dropping it would turn "this did not run in this scenario" into
+   * "this does not exist", which is the one thing the IR refuses to do.
+   */
+  function sequence(edges, order) {
+    if (order !== "trace") {
+      return { steps: edges.slice().sort(function (a, b) { return (a.step || 0) - (b.step || 0); }),
+               offstage: [] };
+    }
+    var ran = [], never = [];
+    edges.forEach(function (e) { (e.trace_order != null ? ran : never).push(e); });
+    ran.sort(function (a, b) { return a.trace_order - b.trace_order; });
+    return { steps: ran, offstage: never };
+  }
 
   // Packages present, for the filter's autocomplete.
   var packages = [];
@@ -751,9 +827,17 @@
   function layout(edges) {
     box = {};
     var firstTouch = {};
+    // A trace-only edge has no step, so fall back to its trace position and then
+    // to last. Without this the sort compares against undefined and the node
+    // lands wherever the comparator happens to leave it.
+    var rank = function (e) {
+      if (e.step != null) return e.step;
+      if (e.trace_order != null) return 1000 + e.trace_order;
+      return 9999;
+    };
     edges.forEach(function (e) {
-      if (!(e.from in firstTouch)) firstTouch[e.from] = e.step;
-      if (!(e.to in firstTouch)) firstTouch[e.to] = e.step;
+      if (!(e.from in firstTouch)) firstTouch[e.from] = rank(e);
+      if (!(e.to in firstTouch)) firstTouch[e.to] = rank(e);
     });
 
     var ids = Object.keys(firstTouch);
@@ -918,7 +1002,8 @@
   }
 
   // ---------------------------------------------------------------- state
-  var state = { edges: allEdges, inScope: null, pos: 0, selected: null, playing: false, filters: {} };
+  var state = { edges: allEdges, offstage: [], scoped: allEdges, order: "static",
+                inScope: null, pos: 0, selected: null, playing: false, filters: {} };
 
   var scrub = document.getElementById("scrub");
   var canvas = document.querySelector(".canvas");
@@ -926,9 +1011,13 @@
   function applyScope(query) {
     stop();
     var scope = computeScope(query);
-    state.edges = scope.edges;
+    state.scoped = scope.edges;
     state.inScope = scope.inScope;
     state.selected = null;
+
+    var split = sequence(scope.edges, state.order);
+    state.edges = split.steps;
+    state.offstage = split.offstage;
 
     var chip = document.getElementById("scope-chip");
     // A query that matches no package has inScope [] — truthy, but there is no
@@ -941,7 +1030,7 @@
       chip.classList.remove("on");
     }
 
-    var empty = state.edges.length === 0;
+    var empty = scope.edges.length === 0;
     canvas.classList.toggle("empty", empty);
     if (empty) {
       document.getElementById("noscope").textContent =
@@ -958,9 +1047,12 @@
       return;
     }
 
-    layout(state.edges);
+    // Everything in scope is laid out and drawn, including whatever the trace
+    // never reached — only the steppable sequence is state.edges.
+    var drawn = state.edges.concat(state.offstage);
+    layout(drawn);
     drawNodes(state.inScope);
-    drawEdges(state.edges);
+    drawEdges(drawn);
 
     state.pos = state.edges.length;
     scrub.max = String(state.edges.length);
@@ -988,6 +1080,19 @@
       g.classList.toggle("selected", state.selected === e.id);
     });
 
+    // Writes the traced run never reached: always on screen, never emphasised,
+    // never part of the count. They are what the static lane knows and this
+    // scenario did not exercise.
+    state.offstage.forEach(function (e) {
+      var g = edgeEls[e.id];
+      if (!g) return;
+      g.classList.remove("hidden");
+      g.classList.add("notrun");
+      g.classList.toggle("selected", state.selected === e.id);
+      shown[e.from] = true;
+      shown[e.to] = true;
+    });
+
     // Keep the first actor on screen before any edge has been revealed.
     if (state.edges.length) shown[state.edges[0].from] = true;
 
@@ -995,20 +1100,28 @@
       nodeEls[id].classList.toggle("hidden", !shown[id]);
     });
 
-    document.getElementById("counter").textContent = "step " + state.pos + " / " + state.edges.length;
+    var unit = state.order === "trace" ? "trace " : "step ";
+    document.getElementById("counter").textContent =
+      unit + state.pos + " / " + state.edges.length;
 
     var note = document.getElementById("scrub-note");
     var current = state.pos > 0 ? state.edges[state.pos - 1] : null;
-    note.textContent = current
-      ? shortName(current.from) + " → " + shortName(current.to)
-        + (current.step != null ? "  (global step " + current.step + ")" : "")
-      : "nothing has run yet";
+    if (!current) {
+      note.textContent = "nothing has run yet";
+      return;
+    }
+    var where = state.order === "trace"
+      ? (current.step != null ? "  (static step " + current.step + ")" : "  (trace only)")
+      : (current.step != null ? "  (global step " + current.step + ")" : "");
+    var times = current.trace_count > 1 ? "  ×" + current.trace_count : "";
+    note.textContent = shortName(current.from) + " → " + shortName(current.to) + where + times;
   }
 
   // --------------------------------------------------------------- detail
   var CONFIDENCE_COPY = {
     "dynamic-unknown": "The target is built at runtime. It is not guessed here — this write happens, but to what, static analysis cannot say.",
-    "trigger-induced": "This write is in no procedure's code. It happens because a trigger fires on the table it starts from."
+    "trigger-induced": "This write is in no procedure's code. It happens because a trigger fires on the table it starts from.",
+    "trace-resolved": "Only the trace could name this target. It is what happened in one run — not what the code guarantees, which is why the unknown edge it explains is still here."
   };
 
   function esc(s) {
@@ -1049,6 +1162,13 @@
     }
     html += field("Provenance", (e.provenance || []).join(" + "));
     if (e.trace_order != null) html += field("Trace order", e.trace_order);
+    if (e.trace_count != null) html += field("Times executed", e.trace_count);
+    if (e.resolves) html += field("Resolves", e.resolves);
+    // Silence is the finding here: a traced IR that gives this edge no position
+    // means the scenario never reached it.
+    if (hasTrace && e.trace_order == null) {
+      html += field("Trace", "never executed in this scenario");
+    }
 
     if (CONFIDENCE_COPY[e.confidence]) {
       html += '<div class="note">' + esc(CONFIDENCE_COPY[e.confidence]) + "</div>";
@@ -1145,6 +1265,31 @@
     search.focus();
   });
 
+  // ------------------------------------------------------- ordering mode
+  var orderStaticBtn = document.getElementById("order-static");
+  var orderTraceBtn = document.getElementById("order-trace");
+
+  function setOrder(order) {
+    if (order === "trace" && !hasTrace) return;
+    state.order = order;
+    orderStaticBtn.setAttribute("aria-pressed", order === "static" ? "true" : "false");
+    orderTraceBtn.setAttribute("aria-pressed", order === "trace" ? "true" : "false");
+    // The "never ran" treatment only exists in trace mode, so the legend row
+    // explaining it only belongs there.
+    document.getElementById("legend-notrun").style.display =
+      order === "trace" ? "flex" : "none";
+    // Re-derive from the current query so the scope survives the switch.
+    applyScope(search.value.trim());
+  }
+
+  orderStaticBtn.addEventListener("click", function () { setOrder("static"); });
+  orderTraceBtn.addEventListener("click", function () { setOrder("trace"); });
+
+  if (hasTrace) {
+    orderTraceBtn.disabled = false;
+    orderTraceBtn.removeAttribute("title");
+  }
+
   var detailPanel = document.getElementById("detail");
   var detailBtn = document.getElementById("toggle-detail");
   detailBtn.addEventListener("click", function () {
@@ -1160,8 +1305,23 @@
   document.getElementById("entry-label").textContent =
     IR.meta.entry_point ? "entry " + IR.meta.entry_point : "all uncalled units";
 
-  if (!allEdges.some(function (e) { return e.trace_order != null; })) {
-    document.getElementById("fresh-trace").textContent = "none — static order is a superset";
+  var freshTrace = document.getElementById("fresh-trace");
+  var traceSource = IR.meta.trace_source || {};
+  if (!hasTrace) {
+    freshTrace.textContent = "none — static order is a superset";
+  } else {
+    // A trace is one execution of one scenario. Naming it is the difference
+    // between "this is the order" and "this was the order, that time".
+    var parts = [traceSource.scenario || "present"];
+    if (traceSource.captured_at) {
+      parts.push("captured " + traceSource.captured_at.replace("T", " ").replace(/\..*$/, "Z"));
+    }
+    if (traceSource.not_executed) {
+      parts.push(traceSource.not_executed + " statement(s) never ran");
+    }
+    freshTrace.textContent = parts.join(" · ");
+    freshTrace.classList.remove("none");
+    freshTrace.classList.add("ok");
   }
 
   applyScope("");

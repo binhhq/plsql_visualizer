@@ -29,7 +29,7 @@ console.log("total edges:", api.allEdges.length);
 console.log();
 
 check("packages", api.packages, ["PKG_DYNAMIC", "PKG_ORDER", "PKG_POSITION", "PKG_VALIDATE"]);
-check("total edges", api.allEdges.length, 14);
+check("total edges", api.allEdges.length, 15);
 console.log();
 
 // Prints the subgraph a query yields, then grades it.
@@ -54,7 +54,7 @@ function report(q, expect) {
 const ALL = ["PKG_DYNAMIC", "PKG_ORDER", "PKG_POSITION", "PKG_VALIDATE"];
 const ORDER_SCOPE = { matched: ["PKG_ORDER"], edges: 10, nodes: 9 };
 
-const unfiltered = report("", { matched: ALL, edges: 14, nodes: 12 });
+const unfiltered = report("", { matched: ALL, edges: 15, nodes: 13 });
 check("no query leaves inScope null", unfiltered.inScope, null);
 console.log();
 
@@ -62,7 +62,7 @@ report("PKG_ORDER", ORDER_SCOPE);
 report("pkg_order", ORDER_SCOPE);   // case-insensitive
 report("order", ORDER_SCOPE);       // substring
 report("PKG_VALIDATE", { matched: ["PKG_VALIDATE"], edges: 2, nodes: 3 });
-report("PKG_DYNAMIC", { matched: ["PKG_DYNAMIC"], edges: 2, nodes: 3 });
+report("PKG_DYNAMIC", { matched: ["PKG_DYNAMIC"], edges: 3, nodes: 4 });
 report("tx9001", { matched: [], edges: 0, nodes: 0 });   // no such package
 
 // --------------------------------------------------- the scope contract itself

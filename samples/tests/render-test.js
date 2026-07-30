@@ -24,6 +24,7 @@ function El(tag) {
     set textContent(v) { this._text = String(v); if (v === "") this.children = []; },
     setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k]; },
+    removeAttribute(k) { delete this.attrs[k]; },
     appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
     addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); },
     dispatch(t, ev) { (this.listeners[t] || []).forEach((fn) => fn.call(this, ev || { target: this, preventDefault() {}, key: "" })); },
@@ -87,7 +88,7 @@ function type(q) {
   search.dispatch("input", { target: search });
 }
 
-const FULL = { nodes: 12, edges: 14, empty: false, chip: null };
+const FULL = { nodes: 13, edges: 15, empty: false, chip: null };
 
 console.log("initial render");
 shot("(no filter)", FULL);
@@ -98,7 +99,7 @@ shot('"PKG_ORDER"', { nodes: 9, edges: 10, empty: false, chip: "scope: PKG_ORDER
 type("pkg_validate");
 shot('"pkg_validate"', { nodes: 3, edges: 2, empty: false, chip: "scope: PKG_VALIDATE · 2 edges" });
 type("PKG_DYNAMIC");
-shot('"PKG_DYNAMIC"', { nodes: 3, edges: 2, empty: false, chip: "scope: PKG_DYNAMIC · 2 edges" });
+shot('"PKG_DYNAMIC"', { nodes: 4, edges: 3, empty: false, chip: "scope: PKG_DYNAMIC · 3 edges" });
 
 // A query matching nothing must show the empty state and NO chip. computeScope
 // returns inScope [] here — truthy — so a naive `if (scope.inScope)` lights the
