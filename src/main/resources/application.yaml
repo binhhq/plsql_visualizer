@@ -26,6 +26,19 @@ plsql:
   # trace    — overlay `trace-file` onto `ir`; needs no database
   task: extract
 
+  # Library units to read from the dictionary. Empty reads the whole schema,
+  # which means USER_IDENTIFIERS and USER_STATEMENTS are scanned end to end —
+  # minutes, on a schema with thousands of objects, with no output until it ends.
+  #
+  # Names only; every object type carrying that name is included, so a package
+  # brings both its spec and its body. Every trigger is added on top whatever is
+  # listed here: trigger writes arrive through the same per-unit query, and
+  # dropping them would hide precisely the writes that appear in no procedure's
+  # own source.
+  #
+  #   units: [PKG_ORDER, PKG_POSITION]
+  units: []
+
   # The schema to analyse, and the credentials to read it with. The extractor
   # connects AS the schema it inspects: the dictionary queries use USER_* views.
   # Env vars keep working, and keep the names the old CLI used.
@@ -40,7 +53,11 @@ plsql:
   # here when you want a standing default, or per run on the command line.
   #
   #   entry: PKG_ORDER.SUBMIT   UNIT.SUBPROGRAM to walk from.
-  #                             Absent walks every uncalled unit.
+  #                             Absent walks every uncalled unit. NOTE this
+  #                             prunes the finished graph — it does NOT make the
+  #                             extraction cheaper. Every dictionary query has
+  #                             already run by the time it applies. Use `units`
+  #                             below for that.
   #
   #   out: target/ir.json       Where to write. Absent means the task chooses:
   #                             `extract` writes target/ir.json, while `refresh`
