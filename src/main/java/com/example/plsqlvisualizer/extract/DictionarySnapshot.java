@@ -16,6 +16,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Everything the extractors need, pulled from the dictionary once and held in
@@ -25,6 +27,8 @@ import java.util.Map;
  * per-row round trip.
  */
 public class DictionarySnapshot {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DictionarySnapshot.class);
 
     private final String schema;
     private final List<RawWrite> writes;
@@ -68,15 +72,19 @@ public class DictionarySnapshot {
     public DictionarySnapshot(DictionaryClient client, Collection<UnitKey> units)
             throws SQLException {
         this.schema = client.schema();
-        this.writes = client.writes(units);
-        this.calls = client.calls(units);
-        this.statements = client.statements(units);
-        this.synonyms = client.synonyms();
-        this.triggers = client.triggers();
-        this.objects = client.objects();
-        this.source = client.source(units);
+        // Timed one query at a time. Unrestricted, these read USER_IDENTIFIERS and
+        // USER_STATEMENTS across the whole schema, which on a large one takes long
+        // enough that a silent run is indistinguishable from a hung one — and
+        // which of them is slow is the first thing worth knowing.
+        this.writes = timed("writes", () -> client.writes(units));
+        this.calls = timed("calls", () -> client.calls(units));
+        this.statements = timed("statements", () -> client.statements(units));
+        this.synonyms = timed("synonyms", client::synonyms);
+        this.triggers = timed("triggers", client::triggers);
+        this.objects = timed("objects", client::objects);
+        this.source = timedByUnit("source", () -> client.source(units));
 
-        for (IdentifierRow row : client.identifiers(units)) {
+        for (IdentifierRow row : timed("identifiers", () -> client.identifiers(units))) {
             identifiersByUsageId
                     .computeIfAbsent(row.unit(), k -> new HashMap<>())
                     .put(row.usageId(), row);
@@ -86,6 +94,28 @@ public class DictionarySnapshot {
         }
         subprogramsByUnit.values()
                 .forEach(rows -> rows.sort(Comparator.comparingInt(IdentifierRow::line)));
+    }
+
+    /** A dictionary read that may fail the way JDBC fails. */
+    @FunctionalInterface
+    private interface Read<T> {
+        T get() throws SQLException;
+    }
+
+    private static <T> List<T> timed(String what, Read<List<T>> read) throws SQLException {
+        long started = System.nanoTime();
+        List<T> rows = read.get();
+        LOG.info("  {}: {} rows in {} ms", what, rows.size(),
+                (System.nanoTime() - started) / 1_000_000);
+        return rows;
+    }
+
+    private static <K, V> Map<K, V> timedByUnit(String what, Read<Map<K, V>> read) throws SQLException {
+        long started = System.nanoTime();
+        Map<K, V> rows = read.get();
+        LOG.info("  {}: {} unit(s) in {} ms", what, rows.size(),
+                (System.nanoTime() - started) / 1_000_000);
+        return rows;
     }
 
     public String schema() {

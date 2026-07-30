@@ -1,6 +1,8 @@
 package com.example.plsqlvisualizer.config;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -22,8 +24,26 @@ public record VisualizerProperties(
         /** What to do on startup. */
         @DefaultValue("extract") Task task,
 
-        /** UNIT.SUBPROGRAM to walk from; null walks every uncalled unit. */
+        /**
+         * UNIT.SUBPROGRAM to walk from; null walks every uncalled unit.
+         *
+         * <p>This prunes the finished graph, not the dictionary reads — see
+         * {@link #units()} for the setting that makes a large schema tractable.
+         */
         String entry,
+
+        /**
+         * Library units to read from the dictionary. Empty means the whole
+         * schema, which on a large one means USER_IDENTIFIERS and USER_STATEMENTS
+         * are scanned end to end.
+         *
+         * <p>Names only — every object type carrying that name is included, so
+         * a package brings its spec and its body. Triggers are always added on
+         * top, whatever is listed: their writes reach the graph through the same
+         * per-unit query, and dropping them would hide exactly the writes that
+         * appear in nobody's source.
+         */
+        @DefaultValue List<String> units,
 
         /** Where to write. Null means "let the task choose" — see the class note. */
         Path out,
@@ -46,6 +66,12 @@ public record VisualizerProperties(
     public VisualizerProperties {
         entry = blankToNull(entry);
         scenario = blankToNull(scenario);
+        units = units == null ? List.of()
+                : units.stream()
+                        .map(u -> u == null ? "" : u.trim().toUpperCase(Locale.ROOT))
+                        .filter(u -> !u.isEmpty())
+                        .distinct()
+                        .toList();
     }
 
     private static String blankToNull(String value) {
