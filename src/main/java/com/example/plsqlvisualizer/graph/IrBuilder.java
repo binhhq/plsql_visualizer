@@ -11,6 +11,7 @@ import com.example.plsqlvisualizer.extract.WriteExtractor;
 import com.example.plsqlvisualizer.model.Edge;
 import com.example.plsqlvisualizer.model.Ir;
 import com.example.plsqlvisualizer.model.Meta;
+import com.example.plsqlvisualizer.model.Node;
 import com.example.plsqlvisualizer.model.StaticSource;
 import com.example.plsqlvisualizer.model.TraceSource;
 import com.example.plsqlvisualizer.model.Unit;
@@ -38,6 +39,18 @@ public class IrBuilder {
      *        from every unit nothing calls
      */
     public Ir build(String entryPoint) {
+        GraphAccumulator graph = extract();
+        return assemble(graph.nodes(), graph.edges(), entryPoint);
+    }
+
+    /**
+     * Runs every extraction pass over the snapshot, unordered.
+     *
+     * <p>Public because the incremental refresh runs the same passes over a
+     * snapshot narrowed to the stale units — the edges a unit produces must not
+     * depend on whether it was rebuilt alone or with the whole schema.
+     */
+    public GraphAccumulator extract() {
         SynonymResolver resolver = new SynonymResolver(snapshot.synonyms(), snapshot.schema());
         GraphAccumulator graph = new GraphAccumulator();
 
@@ -46,13 +59,24 @@ public class IrBuilder {
         new DynamicSqlFlagger(snapshot).extractInto(graph);
         new TriggerExtractor(snapshot, resolver).extractInto(graph);
 
-        CallGraph callGraph = new CallGraph(graph.edges());
-        StepOrdinal ordinal = new StepOrdinal(graph.edges(), callGraph);
+        return graph;
+    }
+
+    /**
+     * Orders an edge population and wraps it in fresh meta.
+     *
+     * <p>Ordering happens over the whole graph, so a refresh that rebuilt one unit
+     * still hands the complete edge set here: a step ordinal is a position in the
+     * walk from the entry point, and that walk crosses units.
+     */
+    public Ir assemble(List<Node> nodes, List<Edge> edges, String entryPoint) {
+        CallGraph callGraph = new CallGraph(edges);
+        StepOrdinal ordinal = new StepOrdinal(edges, callGraph);
 
         List<String> entryPoints = resolveEntryPoints(entryPoint, callGraph, ordinal);
         List<Edge> ordered = ordinal.order(entryPoints);
 
-        return new Ir(buildMeta(entryPoint), graph.nodes(), ordered);
+        return new Ir(buildMeta(entryPoint), nodes, ordered);
     }
 
     private List<String> resolveEntryPoints(String entryPoint, CallGraph callGraph,

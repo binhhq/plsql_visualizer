@@ -11,6 +11,7 @@ import com.example.plsqlvisualizer.db.TriggerRow;
 import com.example.plsqlvisualizer.db.UnitKey;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -46,16 +47,36 @@ public class DictionarySnapshot {
     private final Map<UnitKey, ReachabilityAnalyzer> reachabilityCache = new HashMap<>();
 
     public DictionarySnapshot(DictionaryClient client) throws SQLException {
+        this(client, null);
+    }
+
+    /**
+     * A snapshot narrowed to a few units, for the incremental refresh (design.md §7).
+     *
+     * <p>Only the per-unit views are restricted. Synonyms and triggers are
+     * schema-wide resolution data and cheap to re-read, and the object list has to
+     * stay complete because it becomes the IR's freshness record for
+     * <em>every</em> unit, not just the rebuilt ones.
+     *
+     * <p>Safe to narrow because no pass reads anything outside the unit that owns
+     * the edge it emits: a callee's name and type arrive on the call row itself,
+     * from the signature join, not from a lookup here.
+     *
+     * @param units units to restrict to; null means the whole schema, and an empty
+     *        set means no units at all — what a refresh with only prunes to do asks for
+     */
+    public DictionarySnapshot(DictionaryClient client, Collection<UnitKey> units)
+            throws SQLException {
         this.schema = client.schema();
-        this.writes = client.writes();
-        this.calls = client.calls();
-        this.statements = client.statements();
+        this.writes = client.writes(units);
+        this.calls = client.calls(units);
+        this.statements = client.statements(units);
         this.synonyms = client.synonyms();
         this.triggers = client.triggers();
         this.objects = client.objects();
-        this.source = client.source();
+        this.source = client.source(units);
 
-        for (IdentifierRow row : client.identifiers()) {
+        for (IdentifierRow row : client.identifiers(units)) {
             identifiersByUsageId
                     .computeIfAbsent(row.unit(), k -> new HashMap<>())
                     .put(row.usageId(), row);

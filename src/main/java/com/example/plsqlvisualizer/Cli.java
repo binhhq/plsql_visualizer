@@ -2,6 +2,7 @@ package com.example.plsqlvisualizer;
 
 import com.example.plsqlvisualizer.db.DictionaryClient;
 import com.example.plsqlvisualizer.extract.DictionarySnapshot;
+import com.example.plsqlvisualizer.freshness.IrRefresher;
 import com.example.plsqlvisualizer.freshness.StalenessChecker;
 import com.example.plsqlvisualizer.freshness.StalenessReport;
 import com.example.plsqlvisualizer.graph.IrBuilder;
@@ -22,6 +23,8 @@ import java.util.Map;
  *   --entry     UNIT.SUBPROGRAM to walk from; defaults to every uncalled unit
  *   --out       output file     (default target/ir.json)
  *   --check     existing IR to test for staleness instead of extracting
+ *   --refresh   existing IR to bring up to date, re-reading only what changed;
+ *               rewritten in place unless --out names somewhere else
  * </pre>
  *
  * <p>The renderer consumes the output file and nothing else — it never touches
@@ -44,9 +47,16 @@ public final class Cli {
         String entry = options.get("entry");
         Path out = Path.of(options.getOrDefault("out", "target/ir.json"));
         String check = options.get("check");
+        String refresh = options.get("refresh");
 
         if (check != null) {
             checkStaleness(url, user, password, Path.of(check));
+            return;
+        }
+
+        if (refresh != null) {
+            Path target = options.containsKey("out") ? out : Path.of(refresh);
+            refresh(url, user, password, Path.of(refresh), target, entry);
             return;
         }
 
@@ -73,8 +83,39 @@ public final class Cli {
         report.removed().forEach(u -> System.out.printf("  removed : %s %s%n", u.type(), u.name()));
 
         if (!report.isFresh()) {
-            System.out.println("Re-extract these units and splice them into the IR.");
+            System.out.printf("Run --refresh %s to re-read just these units and splice them in.%n",
+                    irFile);
         }
+    }
+
+    private static void refresh(String url, String user, String password, Path irFile, Path out,
+                                String entry) throws Exception {
+        Ir previous = IrJson.read(irFile);
+        IrRefresher.Result result;
+        try (DictionaryClient client = DictionaryClient.connect(url, user, password)) {
+            result = new IrRefresher(client).refresh(previous, entry);
+        }
+
+        System.out.printf("%s  (%s)%n", result.report().summary(), irFile);
+        if (!result.changedAnything()) {
+            System.out.println("Nothing to do — the IR already matches the schema.");
+            return;
+        }
+
+        if (result.fullRebuild()) {
+            System.out.printf("Fell back to a full extraction: %s.%n", result.fallbackReason());
+        } else {
+            result.reextracted().forEach(u -> System.out.printf("  re-read : %s %s%n",
+                    u.type(), u.name()));
+            result.pruned().forEach(u -> System.out.printf("  pruned  : %s %s%n",
+                    u.type(), u.name()));
+        }
+
+        IrJson.write(result.ir(), out);
+        System.out.printf("  edges   : %d → %d%n",
+                previous.edges() == null ? 0 : previous.edges().size(),
+                result.ir().edges().size());
+        printSummary(result.ir(), out);
     }
 
     private static void printSummary(Ir ir, Path out) {

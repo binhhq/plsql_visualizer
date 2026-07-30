@@ -216,6 +216,27 @@ Nothing auto-runs the extractor. Oracle refreshes the *dictionary* on recompile
 - **Pull (staleness check) — default.** IR stores each unit's `last_ddl_time`.
   On run, query `ALL_OBJECTS.LAST_DDL_TIME`; re-extract **only changed units**
   and splice into the IR (dictionary is per-object, so incremental is natural).
+
+  ```bash
+  --check   <ir.json>   # report only: which units moved
+  --refresh <ir.json>   # re-read just those units, splice, rewrite the file
+  ```
+
+  **The rule the splice obeys: a refreshed IR equals a full extraction.**
+  Incremental changes how much of the dictionary is scanned, never the answer.
+  Two consequences worth stating, because both are easy to get wrong:
+
+  - *Steps are renumbered globally.* A `step` is a position in the walk from the
+    entry point, and that walk crosses units — so replacing one unit's edges
+    re-orders the whole graph. The splice merges edge populations and re-runs the
+    ordering pass; it never patches step numbers in place.
+  - *Every edge must name the unit that produced it,* since that is the key the
+    splice replaces by. A write or call leaves a `PROC:` node, which carries
+    `unit` + `unit_type`. A trigger-induced write leaves a *table* — the node
+    cannot say who wrote it, which is the very reason those edges exist — so
+    `via_trigger` is the link back. An edge that can name neither makes a correct
+    splice impossible: fall back to a full extraction and say so out loud, rather
+    than dropping the edge (a lost write) or keeping it (a duplicate).
 - **Push (optional).** A `AFTER CREATE OR ALTER ON SCHEMA` DDL trigger enqueues
   changed object names; or a post-deploy step in CI calls the extractor for the
   changeset.
@@ -281,7 +302,8 @@ plsql-dataflow-tool/
     trace/       TraceParser (10046), HprofParser        (phase 2)
     model/       Node, Edge, Ir  + Jackson mapping
     graph/       IrBuilder (JGraphT), StepOrdinal
-    freshness/   StalenessChecker (LAST_DDL_TIME)
+    freshness/   StalenessChecker (LAST_DDL_TIME), IrRefresher (decides
+                 incremental vs full), IrSplicer + EdgeOwner (the merge)
     Cli.java
 ```
 
