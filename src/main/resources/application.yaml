@@ -69,3 +69,32 @@ plsql:
   #   trace-file: run.trc       The 10046 trace `trace` overlays onto `ir`.
   #   scenario: place_order     Recorded in meta.trace_source. Absent uses the
   #                             trace file's own name.
+
+---
+# ---------------------------------------------------------------------------
+# Long-running service:  --spring.profiles.active=serve
+#
+#   GET  /              the renderer, with this schema's IR injected
+#   GET  /api/ir        that IR as JSON
+#   POST /api/extract   re-read the schema and replace the held IR
+#   GET  /api/health    liveness, and whether an IR is loaded yet
+#
+# There is no port in the default profile because nothing listens there: the
+# default is a run-once tool that extracts and exits. Setting server.port
+# without this profile configures a server that is never started.
+# ---------------------------------------------------------------------------
+spring:
+  config:
+    activate:
+      on-profile: serve
+  main:
+    web-application-type: servlet
+
+server:
+  port: ${PORT:8080}
+
+plsql:
+  # Served by GET /, read per request so edits show up on reload. The IR is
+  # injected into its <script id="ir-data"> block, so the page shows the live
+  # schema rather than whatever fixture the file was saved with.
+  renderer: samples/renderer.html

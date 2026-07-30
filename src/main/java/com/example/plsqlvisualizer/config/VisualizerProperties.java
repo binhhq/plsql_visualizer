@@ -55,7 +55,17 @@ public record VisualizerProperties(
         Path traceFile,
 
         /** Name recorded in meta.trace_source; null uses the trace filename. */
-        String scenario) {
+        String scenario,
+
+        /**
+         * The renderer HTML the serve profile hands out at {@code GET /}, read
+         * from disk per request with the live IR injected into its
+         * {@code <script id="ir-data">} block.
+         *
+         * <p>A path rather than a bundled copy on the classpath: one file that
+         * is always the current one beats two that drift apart.
+         */
+        @DefaultValue("samples/renderer.html") Path renderer) {
 
     /**
      * Blank means absent. A YAML key written with no value — {@code scenario:} —
