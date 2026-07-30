@@ -32,7 +32,18 @@ body{margin:0}
 
   <div style="display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid #cbd5e1;flex:none;flex-wrap:wrap">
     <div style="font-size:13px;font-weight:700;letter-spacing:.04em;color:#0f766e;text-transform:uppercase">PL/SQL DATA-FLOW</div>
-    <input type="text" value="{{ searchQuery }}" onChange="{{ onSearchChange }}" placeholder="search nodes…" style="font-size:11.5px;font-family:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;padding:5px 9px;border:1px solid #cbd5e1;border-radius:4px;width:170px;color:#1e293b;outline:none"/>
+    <div style="position:relative">
+    <input type="text" value="{{ searchQuery }}" onChange="{{ onSearchChange }}" placeholder="jump to procedure…" style="font-size:11.5px;font-family:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;padding:5px 9px;border:1px solid #cbd5e1;border-radius:4px;width:200px;color:#1e293b;outline:none"/>
+    <sc-if value="{{ hasSearchMatches }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:32px;left:0;width:280px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:10;max-height:260px;overflow-y:auto">
+        <sc-for list="{{ searchMatches }}" as="sm" hint-placeholder-count="0">
+          <div onClick="{{ sm.onSelect }}" style="padding:7px 10px;font-size:11.5px;font-family:'IBM Plex Sans',ui-sans-serif,sans-serif;color:#1e293b;cursor:pointer;border-bottom:1px solid #f1f5f9">
+            <span style="color:#0f766e;font-weight:600">{{ sm.pkg }}</span><span style="color:#94a3b8">.</span>{{ sm.proc }}
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    </div>
     <div style="display:flex;gap:6px;margin-left:4px">
       <div onClick="{{ toggleChipDynamic }}" style="{{ chipDynamicStyle }}">dynamic-unknown</div>
       <div onClick="{{ toggleChipTrigger }}" style="{{ chipTriggerStyle }}">trigger-induced</div>
@@ -471,6 +482,14 @@ class Component extends DCLogic {
       const p = layout.pos[n.id];
       return { x: p.x - 6, y: p.y - 6, w: p.w + 12, h: p.h + 12 };
     }) : [];
+    const searchMatches = q ? ir.nodes.filter(n => n.kind === 'program_unit' && n.name.toLowerCase().includes(q)).slice(0, 8).map(n => {
+      const dot = n.name.indexOf('.');
+      return {
+        id: n.id, pkg: dot >= 0 ? n.name.slice(0, dot) : n.name, proc: dot >= 0 ? n.name.slice(dot + 1) : '',
+        onSelect: () => { this.onNodeClick(n.id); this.setState({ searchQuery: '' }); }
+      };
+    }) : [];
+    const hasSearchMatches = searchMatches.length > 0;
 
     const sel = (() => {
       const e = ir.edges.find(x => x.id === s.selectedEdgeId);
@@ -499,7 +518,7 @@ class Component extends DCLogic {
       panTransform: `translate(${s.tx},${s.ty}) scale(${s.scale})`,
       canvasCursor: s.dragging ? 'grabbing' : 'grab',
       onWheel: this.onWheel, onPointerDown: this.onPointerDown, onPointerMove: this.onPointerMove, onPointerUp: this.onPointerUp,
-      edgeVisuals, nodeVisuals, searchHighlights,
+      edgeVisuals, nodeVisuals, searchHighlights, searchMatches, hasSearchMatches,
       detailOpen: s.detailOpen, hasSelectedEdge: !!sel, noSelection: !sel, sel,
       copyUnitLine: this.copyUnitLine, copyLabel: s.copied ? 'copied ✓' : 'copy unit:line',
       playLabel: s.playing ? 'pause' : 'play ▸', togglePlay: this.togglePlay,
