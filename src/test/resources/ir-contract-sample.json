@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "schema_version": "1.0",
+    "db": "NEWFO_DEV",
+    "entry_point": "APP.PKG_ORDER.SUBMIT",
+    "static_source": {
+      "generated_at": "2026-07-28T10:00:00Z",
+      "units": [
+        {
+          "owner": "APP",
+          "name": "PKG_ORDER",
+          "type": "PACKAGE BODY",
+          "last_ddl_time": "2026-07-27T22:14:00Z"
+        }
+      ]
+    },
+    "trace_source": {
+      "present": true,
+      "captured_at": "2026-07-26T09:00:00Z",
+      "scenario": "place_order_hose"
+    }
+  },
+  "nodes": [
+    {
+      "id": "PROC:APP.PKG_ORDER.SUBMIT",
+      "kind": "program_unit",
+      "unit": "PKG_ORDER",
+      "subprogram": "SUBMIT",
+      "unit_type": "PACKAGE BODY"
+    },
+    {
+      "id": "TBL:APP.ORDERS",
+      "kind": "table",
+      "schema": "APP",
+      "name": "ORDERS"
+    },
+    {
+      "id": "TBL:__UNKNOWN__",
+      "kind": "unknown"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "type": "call",
+      "from": "PROC:APP.PKG_ORDER.SUBMIT",
+      "to": "PROC:APP.PKG_VALIDATE.CHECK_ORDER",
+      "step": 1,
+      "line": 20,
+      "confidence": "resolved",
+      "reachability": "unconditional",
+      "provenance": ["static"]
+    },
+    {
+      "id": "e2",
+      "type": "write",
+      "op": "INSERT",
+      "from": "PROC:APP.PKG_ORDER.SUBMIT",
+      "to": "TBL:APP.ORDERS",
+      "step": 2,
+      "line": 30,
+      "sql_id": "8kyysdc8m75ag",
+      "confidence": "resolved",
+      "resolved_via": "direct",
+      "reachability": "unconditional",
+      "provenance": ["static", "trace"],
+      "trace_order": 5
+    },
+    {
+      "id": "e3",
+      "type": "write",
+      "op": "INSERT",
+      "from": "PROC:APP.PKG_ORDER.SUBMIT",
+      "to": "TBL:APP.ORDER_LOG",
+      "step": 5,
+      "line": 48,
+      "confidence": "resolved",
+      "resolved_via": "direct",
+      "reachability": "branch-conditional",
+      "guard": "IF p_market = 'HOSE'",
+      "provenance": ["static"]
+    },
+    {
+      "id": "e4",
+      "type": "write",
+      "op": "INSERT",
+      "from": "PROC:APP.PKG_DYNAMIC.LOG_DYNAMIC",
+      "to": "TBL:__UNKNOWN__",
+      "step": 1,
+      "line": 11,
+      "confidence": "dynamic-unknown",
+      "raw_text": "INSERT INTO ' || v_tbl || ' ...",
+      "provenance": ["static"]
+    },
+    {
+      "id": "e5",
+      "type": "write",
+      "op": "INSERT",
+      "from": "TBL:APP.ORDERS",
+      "to": "TBL:APP.ORDER_AUDIT",
+      "confidence": "trigger-induced",
+      "via_trigger": "TRG_ORDER_AUDIT",
+      "provenance": ["static"]
+    }
+  ]
+}

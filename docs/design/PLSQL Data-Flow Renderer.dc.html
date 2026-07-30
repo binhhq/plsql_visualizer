@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+.c-table{fill:#f1f5f9;stroke:#475569}
+.c-proc{fill:#ccfbf1;stroke:#0f766e}
+.c-alert{fill:#ffe4e6;stroke:#be123c}
+.c-trace{stroke:#4f46e5;fill:#4f46e5}
+.c-table-ink{color:#475569}
+.c-proc-ink{color:#0f766e}
+.c-alert-ink{color:#be123c}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;height:100vh;width:100%;background:#ffffff;font-family:'IBM Plex Sans','IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;color:#1e293b;overflow:hidden">
+  <div style="display:flex;align-items:center;gap:10px;padding:7px 16px;background:#f8fafc;border-bottom:1px solid #cbd5e1;font-size:11px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#64748b;flex:none">
+    <span>static: fresh</span>
+    <span style="color:#cbd5e1">·</span>
+    <span>{{ freshnessTraceText }}</span>
+    <sc-if value="{{ hasStale }}" hint-placeholder-val="{{ false }}">
+      <span style="border:1px solid #1e293b;color:#1e293b;font-weight:700;font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:3px">STALE</span>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid #cbd5e1;flex:none;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:700;letter-spacing:.04em;color:#0f766e;text-transform:uppercase">PL/SQL DATA-FLOW</div>
+    <input type="text" value="{{ searchQuery }}" onChange="{{ onSearchChange }}" placeholder="search nodes…" style="font-size:11.5px;font-family:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;padding:5px 9px;border:1px solid #cbd5e1;border-radius:4px;width:170px;color:#1e293b;outline:none"/>
+    <div style="display:flex;gap:6px;margin-left:4px">
+      <div onClick="{{ toggleChipDynamic }}" style="{{ chipDynamicStyle }}">dynamic-unknown</div>
+      <div onClick="{{ toggleChipTrigger }}" style="{{ chipTriggerStyle }}">trigger-induced</div>
+      <div onClick="{{ toggleChipBranch }}" style="{{ chipBranchStyle }}">branch-conditional</div>
+    </div>
+    <sc-if value="{{ highlightActive }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ clearHighlight }}" style="font-size:10.5px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#4f46e5;cursor:pointer;padding:4px 8px;border:1px solid #4f46e5;border-radius:4px">clear highlight ×</div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <button onClick="{{ toggleDetailOpen }}" style="font-size:11px;font-family:'IBM Plex Sans',ui-sans-serif,sans-serif;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;color:#475569;cursor:pointer">{{ detailToggleLabel }}</button>
+  </div>
+
+  <div style="display:flex;flex:1;min-height:0">
+    <div style="flex:1;position:relative;overflow:hidden;background:#ffffff;cursor:{{ canvasCursor }}" onWheel="{{ onWheel }}" onPointerDown="{{ onPointerDown }}" onPointerMove="{{ onPointerMove }}" onPointerUp="{{ onPointerUp }}" onPointerLeave="{{ onPointerUp }}">
+      <svg width="100%" height="100%" viewBox="{{ viewBoxStr }}" style="display:block">
+        <g transform="{{ panTransform }}">
+          <sc-for list="{{ edgeVisuals }}" as="ev" hint-placeholder-count="21">
+            <g style="{{ ev.groupStyle }}">
+              <path d="{{ ev.d }}" fill="none" stroke="{{ ev.stroke }}" stroke-width="{{ ev.strokeWidth }}" stroke-dasharray="{{ ev.dash }}" style="cursor:pointer" onClick="{{ ev.onSelect }}"></path>
+              <path d="{{ ev.d }}" fill="none" stroke="transparent" stroke-width="14" style="cursor:pointer" onClick="{{ ev.onSelect }}"></path>
+              <polygon points="{{ ev.arrowPoints }}" fill="{{ ev.stroke }}"></polygon>
+              <sc-if value="{{ ev.hasTraceCheck }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ ev.checkBox.x }}" y="{{ ev.checkBox.y }}" width="{{ ev.checkBox.w }}" height="{{ ev.checkBox.h }}">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:700 10px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#4f46e5;line-height:1">✓</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ ev.hasTriggerTag }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ ev.tagBox.x }}" y="{{ ev.tagBox.y }}" width="{{ ev.tagBox.w }}" height="{{ ev.tagBox.h }}">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:italic 9.5px 'IBM Plex Sans',ui-sans-serif,sans-serif;color:#64748b;text-align:center">{{ ev.triggerTagText }}</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ ev.hasGuard }}" hint-placeholder-val="{{ false }}">
+                <rect x="{{ ev.guardX }}" y="{{ ev.guardY }}" width="{{ ev.guardW }}" height="15" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"></rect>
+                <foreignObject x="{{ ev.guardX }}" y="{{ ev.guardY }}" width="{{ ev.guardW }}" height="15">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:9px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#64748b;text-align:center;line-height:15px">{{ ev.guardShort }}</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ ev.hasLoop }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ ev.loopBox.x }}" y="{{ ev.loopBox.y }}" width="{{ ev.loopBox.w }}" height="{{ ev.loopBox.h }}">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:12px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#1e293b;text-align:center;line-height:14px">↻</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ ev.hasOpBadge }}" hint-placeholder-val="{{ false }}">
+                <rect x="{{ ev.badgeX }}" y="{{ ev.badgeY }}" width="{{ ev.badgeW }}" height="16" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"></rect>
+                <foreignObject x="{{ ev.badgeX }}" y="{{ ev.badgeY }}" width="{{ ev.badgeW }}" height="16">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:600 10px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#1e293b;text-align:center;line-height:16px">{{ ev.op }}</div>
+                </foreignObject>
+              </sc-if>
+            </g>
+          </sc-for>
+
+          <sc-for list="{{ searchHighlights }}" as="sh" hint-placeholder-count="0">
+            <rect x="{{ sh.x }}" y="{{ sh.y }}" width="{{ sh.w }}" height="{{ sh.h }}" rx="12" fill="none" stroke="#4f46e5" stroke-width="2"></rect>
+          </sc-for>
+
+          <sc-for list="{{ nodeVisuals }}" as="nv" hint-placeholder-count="18">
+            <g style="{{ nv.groupStyle }}" onClick="{{ nv.onClick }}">
+              <rect x="{{ nv.x }}" y="{{ nv.y }}" width="{{ nv.w }}" height="{{ nv.h }}" rx="10" class="{{ nv.className }}" stroke-width="1.5" stroke-dasharray="{{ nv.dash }}"></rect>
+              <sc-if value="{{ nv.isTwoLine }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ nv.x }}" y="{{ nv.line1Box.y }}" width="{{ nv.w }}" height="14">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:9.5px 'IBM Plex Sans',ui-sans-serif,sans-serif;letter-spacing:.04em;color:#64748b;text-align:center">{{ nv.line1 }}</div>
+                </foreignObject>
+                <foreignObject x="{{ nv.x }}" y="{{ nv.line2Box.y }}" width="{{ nv.w }}" height="16">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:600 11.5px 'IBM Plex Sans',ui-sans-serif,sans-serif;color:#1e293b;text-align:center">{{ nv.line2 }}</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ nv.isOneLine }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ nv.x }}" y="{{ nv.line1Box.y }}" width="{{ nv.w }}" height="16">
+                  <div xmlns="http://www.w3.org/1999/xhtml" class="c-table-ink" style="font:600 11.5px 'IBM Plex Sans',ui-sans-serif,sans-serif;text-align:center">{{ nv.line1 }}</div>
+                </foreignObject>
+              </sc-if>
+              <sc-if value="{{ nv.isUnknown }}" hint-placeholder-val="{{ false }}">
+                <foreignObject x="{{ nv.x }}" y="{{ nv.line2Box.y }}" width="{{ nv.w }}" height="14">
+                  <div xmlns="http://www.w3.org/1999/xhtml" style="font:9px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#be123c;text-align:center">{{ nv.line2 }}</div>
+                </foreignObject>
+              </sc-if>
+            </g>
+          </sc-for>
+        </g>
+      </svg>
+
+      <div style="position:absolute;left:14px;bottom:14px;background:rgba(255,255,255,0.92);border:1px solid #cbd5e1;border-radius:6px;padding:9px 12px;font-size:10px;color:#64748b;font-family:'IBM Plex Sans',ui-sans-serif,sans-serif;line-height:1.7">
+        <div style="font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#475569;margin-bottom:4px">LEGEND</div>
+        <div style="display:flex;align-items:center;gap:6px"><svg width="14" height="10"><rect width="14" height="10" rx="3" class="c-table" stroke-width="1"></rect></svg> table</div>
+        <div style="display:flex;align-items:center;gap:6px"><svg width="14" height="10"><rect width="14" height="10" rx="3" class="c-proc" stroke-width="1"></rect></svg> program unit</div>
+        <div style="display:flex;align-items:center;gap:6px"><svg width="14" height="10"><rect width="14" height="10" rx="3" class="c-alert" stroke-width="1"></rect></svg> unknown target (dynamic-unknown)</div>
+        <div style="display:flex;align-items:center;gap:6px"><svg width="14" height="10"><line x1="0" y1="5" x2="14" y2="5" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,2"></line></svg> trigger-induced write</div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="color:#4f46e5;font-weight:700;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace">✓</span> trace-confirmed</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ true }}">
+      <div style="width:320px;flex:none;border-left:1px solid #cbd5e1;background:#f8fafc;overflow-y:auto;padding:16px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f766e;text-transform:uppercase;margin-bottom:12px">EDGE DETAIL</div>
+        <sc-if value="{{ hasSelectedEdge }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+            <div style="display:inline-block;align-self:flex-start;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:11px;font-weight:700;padding:3px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#fff">{{ sel.op }}</div>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">FROM</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.fromName }}</div></div>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">TO</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.toName }}</div></div>
+            <div style="display:flex;gap:16px">
+              <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">LINE</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.line }}</div></div>
+              <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">SQL_ID</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.sqlId }}</div></div>
+            </div>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">CONFIDENCE</div><div style="font-size:12px">{{ sel.confidence }}</div></div>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">RESOLVED VIA</div><div style="font-size:12px">{{ sel.resolvedVia }}</div></div>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">REACHABILITY</div><div style="font-size:12px">{{ sel.reachability }}</div></div>
+            <sc-if value="{{ sel.hasGuard }}" hint-placeholder-val="{{ false }}">
+              <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">GUARD</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:11.5px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:5px 7px">{{ sel.guard }}</div></div>
+            </sc-if>
+            <sc-if value="{{ sel.hasTrigger }}" hint-placeholder-val="{{ false }}">
+              <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">VIA TRIGGER</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.viaTrigger }}</div></div>
+            </sc-if>
+            <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">PROVENANCE</div><div style="font-size:12px">{{ sel.provenance }}</div></div>
+            <sc-if value="{{ sel.hasTraceOrder }}" hint-placeholder-val="{{ false }}">
+              <div><div style="font-size:9.5px;color:#64748b;letter-spacing:.05em;margin-bottom:2px">TRACE ORDER</div><div style="font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:12px">{{ sel.traceOrder }}</div></div>
+            </sc-if>
+            <button onClick="{{ copyUnitLine }}" style="margin-top:6px;font-size:11px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;padding:7px 10px;border:1px solid #475569;border-radius:4px;background:#fff;color:#1e293b;cursor:pointer">{{ copyLabel }}</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noSelection }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:12px;color:#64748b;line-height:1.6">Select an edge in the graph to inspect its op, source, confidence and provenance.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid #cbd5e1;background:#f8fafc;flex:none;flex-wrap:wrap">
+    <button onClick="{{ togglePlay }}" style="font-size:11px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;padding:6px 12px;border:1px solid #475569;border-radius:4px;background:#fff;color:#1e293b;cursor:pointer;min-width:56px">{{ playLabel }}</button>
+    <input type="range" min="0" max="{{ maxStep }}" value="{{ currentStep }}" onChange="{{ onScrub }}" style="flex:1;max-width:480px"/>
+    <div style="font-size:11px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#1e293b;min-width:90px">{{ stepCounterText }}</div>
+    <div style="display:flex;gap:0;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden">
+      <div onClick="{{ setOrderStatic }}" style="{{ staticBtnStyle }}">static</div>
+      <div onClick="{{ setOrderTrace }}" style="{{ traceBtnStyle }}">trace_order</div>
+    </div>
+    <sc-if value="{{ hasAppendedNote }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:10.5px;color:#64748b;font-family:'IBM Plex Sans',ui-sans-serif,sans-serif">{{ appendedNoteText }}</div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const INK='#1e293b', MUTED='#64748b', HAIRLINE='#cbd5e1', TRIG_STROKE='#94a3b8', TRACE='#4f46e5', ALERT='#be123c', PROC_STROKE='#0f766e';
+const PROC_W=200, PROC_H=44, TABLE_W=150, TABLE_H=40, UNK_W=160, UNK_H=48;
+
+const SAMPLE_IR = {
+  nodes: [
+    {id:'proc:PKG_ORDER.CREATE_ORDER', kind:'program_unit', name:'PKG_ORDER.CREATE_ORDER'},
+    {id:'proc:PKG_ORDER.VALIDATE_ORDER', kind:'program_unit', name:'PKG_ORDER.VALIDATE_ORDER'},
+    {id:'proc:PKG_ORDER.APPLY_DISCOUNT', kind:'program_unit', name:'PKG_ORDER.APPLY_DISCOUNT'},
+    {id:'proc:PKG_ORDER.CANCEL_ORDER', kind:'program_unit', name:'PKG_ORDER.CANCEL_ORDER'},
+    {id:'proc:PKG_INVENTORY.RESERVE_STOCK', kind:'program_unit', name:'PKG_INVENTORY.RESERVE_STOCK'},
+    {id:'proc:PKG_INVENTORY.ADJUST_STOCK', kind:'program_unit', name:'PKG_INVENTORY.ADJUST_STOCK'},
+    {id:'proc:PKG_BILLING.CHARGE_PAYMENT', kind:'program_unit', name:'PKG_BILLING.CHARGE_PAYMENT'},
+    {id:'proc:PKG_BILLING.ISSUE_REFUND', kind:'program_unit', name:'PKG_BILLING.ISSUE_REFUND'},
+    {id:'proc:PKG_AUDIT.LOG_EVENT', kind:'program_unit', name:'PKG_AUDIT.LOG_EVENT'},
+    {id:'proc:PKG_NOTIFY.SEND_CONFIRMATION', kind:'program_unit', name:'PKG_NOTIFY.SEND_CONFIRMATION'},
+    {id:'table:ORDERS', kind:'table', name:'ORDERS'},
+    {id:'table:ORDER_LINES', kind:'table', name:'ORDER_LINES'},
+    {id:'table:ORDER_DISCOUNTS', kind:'table', name:'ORDER_DISCOUNTS'},
+    {id:'table:INVENTORY', kind:'table', name:'INVENTORY'},
+    {id:'table:STOCK_LEDGER', kind:'table', name:'STOCK_LEDGER'},
+    {id:'table:PAYMENTS', kind:'table', name:'PAYMENTS'},
+    {id:'table:AUDIT_LOG', kind:'table', name:'AUDIT_LOG'},
+    {id:'unknown:UNKNOWN', kind:'unknown', name:'UNKNOWN'}
+  ],
+  edges: [
+    {id:'e1', type:'write', from:'proc:PKG_ORDER.CREATE_ORDER', to:'table:ORDERS', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'unconditional', provenance:['static','trace'], step:1, trace_order:1, line:88, sql_id:'a1f92c0e3b'},
+    {id:'e2', type:'call', from:'proc:PKG_ORDER.CREATE_ORDER', to:'proc:PKG_ORDER.VALIDATE_ORDER', step:2, trace_order:2, line:91},
+    {id:'e3', type:'write', from:'proc:PKG_ORDER.CREATE_ORDER', to:'table:ORDER_LINES', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'loop', provenance:['static','trace'], step:3, trace_order:3, line:104, sql_id:'c77de1a049'},
+    {id:'e4', type:'call', from:'proc:PKG_ORDER.CREATE_ORDER', to:'proc:PKG_ORDER.APPLY_DISCOUNT', step:4, trace_order:4, line:110},
+    {id:'e5', type:'write', from:'proc:PKG_ORDER.APPLY_DISCOUNT', to:'table:ORDER_DISCOUNTS', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'branch-conditional', guard:"IF v_promo_code IS NOT NULL", provenance:['static'], step:5, line:34, sql_id:'9b0a4471fe'},
+    {id:'e6', type:'call', from:'proc:PKG_ORDER.CREATE_ORDER', to:'proc:PKG_INVENTORY.RESERVE_STOCK', step:6, trace_order:5, line:118},
+    {id:'e7', type:'write', from:'proc:PKG_INVENTORY.RESERVE_STOCK', to:'table:INVENTORY', op:'MERGE', confidence:'resolved', resolved_via:'synonym', reachability:'unconditional', provenance:['static','trace'], step:7, trace_order:6, line:52, sql_id:'12e6f0ab7d'},
+    {id:'e8', type:'write', from:'proc:PKG_INVENTORY.RESERVE_STOCK', to:'table:STOCK_LEDGER', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'unconditional', provenance:['static','trace'], step:8, trace_order:7, line:61, sql_id:'55c9d3e281'},
+    {id:'e9', type:'call', from:'proc:PKG_INVENTORY.RESERVE_STOCK', to:'proc:PKG_AUDIT.LOG_EVENT', step:9, trace_order:11, line:62},
+    {id:'e10', type:'write', from:'proc:PKG_AUDIT.LOG_EVENT', to:'table:AUDIT_LOG', op:'INSERT', confidence:'trigger-induced', resolved_via:'direct', reachability:'unconditional', via_trigger:'TRG_STOCK_LEDGER_AUDIT', provenance:['static','trace'], step:10, trace_order:12, line:18, sql_id:'e02b8f1c66'},
+    {id:'e11', type:'call', from:'proc:PKG_ORDER.CREATE_ORDER', to:'proc:PKG_BILLING.CHARGE_PAYMENT', step:11, trace_order:8, line:126},
+    {id:'e12', type:'write', from:'proc:PKG_BILLING.CHARGE_PAYMENT', to:'table:PAYMENTS', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'unconditional', provenance:['static','trace'], step:12, trace_order:9, line:203, sql_id:'7a44b0d912'},
+    {id:'e13', type:'write', from:'proc:PKG_BILLING.CHARGE_PAYMENT', to:'unknown:UNKNOWN', op:'UPDATE', confidence:'dynamic-unknown', resolved_via:'direct', reachability:'unconditional', provenance:['static'], step:13, line:214, sql_id:'f30ce9a154'},
+    {id:'e14', type:'call', from:'proc:PKG_BILLING.CHARGE_PAYMENT', to:'proc:PKG_NOTIFY.SEND_CONFIRMATION', step:14, trace_order:10, line:220},
+    {id:'e15', type:'write', from:'proc:PKG_NOTIFY.SEND_CONFIRMATION', to:'table:ORDERS', op:'UPDATE', confidence:'resolved', resolved_via:'view', reachability:'unconditional', provenance:['static','trace'], step:15, trace_order:13, line:29, sql_id:'d81f3a06c2'},
+    {id:'e16', type:'write', from:'proc:PKG_BILLING.ISSUE_REFUND', to:'table:PAYMENTS', op:'UPDATE', confidence:'resolved', resolved_via:'direct', reachability:'branch-conditional', guard:"IF v_refund_amount > 0", provenance:['static'], step:16, line:66, sql_id:'6f1e0bd733'},
+    {id:'e17', type:'call', from:'proc:PKG_BILLING.ISSUE_REFUND', to:'proc:PKG_INVENTORY.ADJUST_STOCK', step:17, line:70},
+    {id:'e18', type:'write', from:'proc:PKG_INVENTORY.ADJUST_STOCK', to:'table:INVENTORY', op:'UPDATE', confidence:'resolved', resolved_via:'direct', reachability:'unconditional', provenance:['static'], step:18, line:83, sql_id:'2d9c6a4e07'},
+    {id:'e19', type:'write', from:'proc:PKG_INVENTORY.ADJUST_STOCK', to:'table:STOCK_LEDGER', op:'INSERT', confidence:'resolved', resolved_via:'direct', reachability:'loop', provenance:['static'], step:19, line:90, sql_id:'b48f71c3aa'},
+    {id:'e20', type:'write', from:'proc:PKG_ORDER.CANCEL_ORDER', to:'table:ORDER_LINES', op:'DELETE', confidence:'resolved', resolved_via:'direct', reachability:'unconditional', provenance:['static'], step:20, line:142, sql_id:'93a0e5d61f'},
+    {id:'e21', type:'write', from:'proc:PKG_ORDER.CANCEL_ORDER', to:'table:ORDERS', op:'UPDATE', confidence:'resolved', resolved_via:'direct', reachability:'branch-conditional', guard:"IF v_status = 'CANCELLED'", provenance:['static'], step:21, line:150, sql_id:'0c7b4f92de'}
+  ],
+  meta: {
+    static_source: {units: [
+      {id:'PKG_ORDER', last_ddl_time:'2026-06-02T10:00:00Z'},
+      {id:'PKG_INVENTORY', last_ddl_time:'2026-05-14T09:00:00Z'},
+      {id:'PKG_BILLING', last_ddl_time:'2026-07-25T14:30:00Z'},
+      {id:'PKG_AUDIT', last_ddl_time:'2026-03-01T08:00:00Z'},
+      {id:'PKG_NOTIFY', last_ddl_time:'2026-04-11T11:00:00Z'}
+    ]},
+    trace_source: {captured_at:'2026-07-20T09:00:00Z'}
+  }
+};
+
+function computeLayout(ir){
+  const byId = {}; ir.nodes.forEach(n=>byId[n.id]=n);
+  const callEdges = ir.edges.filter(e=>e.type==='call');
+  const writeEdges = ir.edges.filter(e=>e.type==='write');
+  const outCall = {}, inCall = {};
+  callEdges.forEach(e=>{ (outCall[e.from]=outCall[e.from]||[]).push(e.to); inCall[e.to]=(inCall[e.to]||0)+1; });
+  const procNodes = ir.nodes.filter(n=>n.kind==='program_unit');
+  const layer = {};
+  function assign(id,l){ if((layer[id]===undefined)||layer[id]<l){ layer[id]=l; (outCall[id]||[]).forEach(t=>assign(t,l+1)); } }
+  procNodes.filter(n=>!inCall[n.id]).forEach(r=>assign(r.id,0));
+  procNodes.forEach(n=>{ if(layer[n.id]===undefined) layer[n.id]=0; });
+  const tableWriters = {};
+  writeEdges.forEach(e=>{ (tableWriters[e.to]=tableWriters[e.to]||[]).push(e.from); });
+  ir.nodes.filter(n=>n.kind!=='program_unit').forEach(n=>{
+    const writers = tableWriters[n.id]||[];
+    const maxL = writers.length ? Math.max(...writers.map(w=>layer[w]!==undefined?layer[w]:0)) : 0;
+    layer[n.id] = maxL+1;
+  });
+  const firstStep = {};
+  ir.edges.forEach(e=>{ [e.from,e.to].forEach(id=>{ if(firstStep[id]===undefined||e.step<firstStep[id]) firstStep[id]=e.step; }); });
+  const byLayer = {};
+  ir.nodes.forEach(n=>{ const l=layer[n.id]||0; (byLayer[l]=byLayer[l]||[]).push(n); });
+  const layerKeys = Object.keys(byLayer).map(Number).sort((a,b)=>a-b);
+  const colGap=270, rowGap=76, marginX=50, marginY=60;
+  const pos = {};
+  layerKeys.forEach(l=>{
+    const arr = byLayer[l].sort((a,b)=>(firstStep[a.id]??999)-(firstStep[b.id]??999));
+    arr.forEach((n,i)=>{
+      let w,h;
+      if(n.kind==='program_unit'){w=PROC_W;h=PROC_H;} else if(n.kind==='unknown'){w=UNK_W;h=UNK_H;} else {w=TABLE_W;h=TABLE_H;}
+      pos[n.id] = {x: marginX + l*colGap, y: marginY + i*rowGap, w, h, kind:n.kind, name:n.name};
+    });
+  });
+  const maxLayer = layerKeys.length ? Math.max(...layerKeys) : 0;
+  const maxRows = layerKeys.length ? Math.max(...layerKeys.map(l=>byLayer[l].length)) : 1;
+  return {pos, width: marginX*2 + maxLayer*colGap + 220, height: marginY*2 + maxRows*rowGap};
+}
+
+class Component extends DCLogic {
+  state = {
+    currentStep: 5, playing: false, orderMode: 'static', selectedEdgeId: null, detailOpen: true,
+    showDynamic: true, showTrigger: true, showBranch: true, searchQuery: '',
+    highlightNodeId: null, copied: false,
+    tx: 30, ty: 20, scale: 0.85, dragging: false, dragStart: null
+  };
+
+  componentDidMount() {
+    this.layout = computeLayout(SAMPLE_IR);
+    this._onKey = (e) => {
+      if (e.key === 'ArrowRight') this.stepBy(1);
+      if (e.key === 'ArrowLeft') this.stepBy(-1);
+      if (e.key === ' ') { e.preventDefault(); this.togglePlay(); }
+    };
+    window.addEventListener('keydown', this._onKey);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._onKey);
+    if (this._timer) clearInterval(this._timer);
+  }
+
+  stepBy(d) {
+    const max = SAMPLE_IR.edges.length;
+    this.setState(s => ({ currentStep: Math.max(0, Math.min(max, s.currentStep + d)) }));
+  }
+  togglePlay() {
+    if (this.state.playing) { clearInterval(this._timer); this.setState({ playing: false }); return; }
+    this.setState({ playing: true });
+    this._timer = setInterval(() => {
+      this.setState(s => {
+        const max = SAMPLE_IR.edges.length;
+        if (s.currentStep >= max) { clearInterval(this._timer); return { playing: false }; }
+        return { currentStep: s.currentStep + 1 };
+      });
+    }, 900);
+  }
+  onScrub = (e) => this.setState({ currentStep: parseInt(e.target.value, 10) });
+  setOrderStatic = () => this.setState({ orderMode: 'static' });
+  setOrderTrace = () => this.setState({ orderMode: 'trace' });
+  selectEdge = (id) => this.setState({ selectedEdgeId: id });
+  toggleDetailOpen = () => this.setState(s => ({ detailOpen: !s.detailOpen }));
+  toggleChipDynamic = () => this.setState(s => ({ showDynamic: !s.showDynamic }));
+  toggleChipTrigger = () => this.setState(s => ({ showTrigger: !s.showTrigger }));
+  toggleChipBranch = () => this.setState(s => ({ showBranch: !s.showBranch }));
+  onSearchChange = (e) => this.setState({ searchQuery: e.target.value });
+  clearHighlight = () => this.setState({ highlightNodeId: null });
+  onNodeClick = (id) => this.setState(s => ({ highlightNodeId: s.highlightNodeId === id ? null : id }));
+
+  onWheel = (e) => {
+    e.preventDefault();
+    const d = e.deltaY > 0 ? -0.08 : 0.08;
+    this.setState(s => ({ scale: Math.max(0.4, Math.min(2.5, s.scale + d)) }));
+  };
+  onPointerDown = (e) => this.setState({ dragging: true, dragStart: { x: e.clientX, y: e.clientY, tx: this.state.tx, ty: this.state.ty } });
+  onPointerMove = (e) => {
+    if (!this.state.dragging || !this.state.dragStart) return;
+    const { x, y, tx, ty } = this.state.dragStart;
+    this.setState({ tx: tx + (e.clientX - x), ty: ty + (e.clientY - y) });
+  };
+  onPointerUp = () => this.setState({ dragging: false, dragStart: null });
+
+  copyUnitLine = () => {
+    const edge = SAMPLE_IR.edges.find(e => e.id === this.state.selectedEdgeId);
+    if (!edge) return;
+    const fromNode = SAMPLE_IR.nodes.find(n => n.id === edge.from);
+    const text = `${fromNode.name}:${edge.line}`;
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    this.setState({ copied: true });
+    setTimeout(() => this.setState({ copied: false }), 1200);
+  };
+
+  renderVals() {
+    const ir = SAMPLE_IR;
+    const layout = this.layout || computeLayout(ir);
+    const byId = {}; ir.nodes.forEach(n => byId[n.id] = n);
+    const s = this.state;
+
+    // freshness
+    const capturedAt = new Date(ir.meta.trace_source.captured_at);
+    const staleUnits = ir.meta.static_source.units.filter(u => new Date(u.last_ddl_time) > capturedAt);
+    const hasStale = staleUnits.length > 0;
+    const freshnessTraceText = hasStale
+      ? `trace: stale (${staleUnits.map(u => u.id).join(', ')} changed after capture)`
+      : 'trace: fresh';
+
+    // ordering
+    let sortedEdges;
+    if (s.orderMode === 'static') {
+      sortedEdges = [...ir.edges].sort((a, b) => a.step - b.step);
+    } else {
+      const withTrace = ir.edges.filter(e => e.trace_order != null).sort((a, b) => a.trace_order - b.trace_order);
+      const withoutTrace = ir.edges.filter(e => e.trace_order == null).sort((a, b) => a.step - b.step);
+      sortedEdges = [...withTrace, ...withoutTrace];
+    }
+    const appendedCount = s.orderMode === 'trace' ? ir.edges.filter(e => e.trace_order == null).length : 0;
+    const maxStep = sortedEdges.length;
+    const currentStep = Math.min(s.currentStep, maxStep);
+
+    const revealedIds = new Set();
+    sortedEdges.slice(0, currentStep).forEach(e => revealedIds.add(e.id));
+    const activeId = currentStep > 0 ? sortedEdges[currentStep - 1].id : null;
+
+    const q = s.searchQuery.trim().toLowerCase();
+    const nodeVisibleFrom = {};
+    ir.edges.forEach(e => { if (revealedIds.has(e.id)) { nodeVisibleFrom[e.from] = true; nodeVisibleFrom[e.to] = true; } });
+
+    const filterMuted = (e) => (e.confidence === 'dynamic-unknown' && !s.showDynamic)
+      || (e.confidence === 'trigger-induced' && !s.showTrigger)
+      || (e.reachability === 'branch-conditional' && !s.showBranch);
+
+    const edgeVisuals = ir.edges.map(e => {
+      const revealed = revealedIds.has(e.id);
+      const active = e.id === activeId;
+      const notInTrace = s.orderMode === 'trace' && e.trace_order == null;
+      const from = layout.pos[e.from], to = layout.pos[e.to];
+      const x1 = from.x + from.w, y1 = from.y + from.h / 2;
+      const x2 = to.x, y2 = to.y + to.h / 2;
+      const dx = (x2 - x1) / 2;
+      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+      const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+      const isWrite = e.type === 'write';
+      const highlightOn = !!s.highlightNodeId;
+      const touchesHighlight = highlightOn && (e.from === s.highlightNodeId || e.to === s.highlightNodeId);
+
+      let opacity = revealed ? (active ? 1 : 0.42) : 0;
+      if (revealed && filterMuted(e)) opacity *= 0.14;
+      if (revealed && notInTrace) opacity *= 0.55;
+      if (highlightOn) opacity = touchesHighlight ? Math.max(opacity, revealed ? 0.9 : 0) : opacity * 0.15;
+
+      let stroke = e.confidence === 'dynamic-unknown' ? ALERT : (e.confidence === 'trigger-induced' ? TRIG_STROKE : (isWrite ? INK : MUTED));
+      const strokeWidth = isWrite ? (active ? 2.4 : 1.5) : 1;
+      const dash = e.confidence === 'trigger-induced' ? '5,4' : (isWrite ? '' : '2,3');
+
+      const angle = 0;
+      const arrowPoints = `${x2 - 7},${y2 - 4} ${x2},${y2} ${x2 - 7},${y2 + 4}`;
+
+      const hasGuard = e.reachability === 'branch-conditional' && !!e.guard;
+      const guardShort = hasGuard ? (e.guard.length > 26 ? e.guard.slice(0, 24) + '…' : e.guard) : '';
+      const guardW = hasGuard ? Math.max(50, guardShort.length * 5.6 + 12) : 0;
+      const hasLoop = e.reachability === 'loop';
+      const hasTriggerTag = e.confidence === 'trigger-induced';
+      const hasOpBadge = isWrite;
+      const badgeW = hasOpBadge ? e.op.length * 6.6 + 10 : 0;
+      const hasTraceCheck = e.provenance && e.provenance.includes('trace') && e.trace_order != null;
+
+      let stackY = midY - 9;
+      const guardY = stackY; stackY -= hasGuard ? 18 : 0;
+      const loopY = hasGuard ? guardY - 6 : midY - 9;
+      const badgeY = hasOpBadge ? midY + (hasGuard ? 8 : -8) : midY;
+      const tagY = midY + (hasGuard ? 24 : 16);
+      const checkCx = x1 + (x2 - x1) * 0.22, checkCy = y1 + (y2 - y1) * 0.22 - 6;
+
+      return {
+        id: e.id, opacity, d, stroke, strokeWidth, dash, arrowPoints,
+        midX, midY,
+        checkBox: { x: checkCx - 7, y: checkCy - 10, w: 16, h: 14 },
+        hasGuard, guardShort, guardX: midX - guardW / 2, guardY: guardY, guardW,
+        hasLoop, loopBox: { x: midX + (hasGuard ? 34 : 0) - 8, y: (hasGuard ? guardY + 4 : midY - 4) - 10, w: 16, h: 14 },
+        hasTriggerTag, triggerTagText: `via ${e.via_trigger || ''}`, tagBox: { x: midX - 70, y: tagY - 10, w: 140, h: 14 },
+        hasOpBadge, op: e.op || '', badgeX: midX - badgeW / 2, badgeY, badgeW,
+        hasTraceCheck,
+        groupStyle: { opacity },
+        onSelect: () => this.selectEdge(e.id)
+      };
+    });
+
+    const nodeVisuals = ir.nodes.map(n => {
+      const p = layout.pos[n.id];
+      const visible = nodeVisibleFrom[n.id];
+      const highlightOn = !!s.highlightNodeId;
+      const isSelf = n.id === s.highlightNodeId;
+      let opacity = visible ? 1 : 0;
+      if (highlightOn && visible) {
+        const touches = isSelf || ir.edges.some(e => revealedIds.has(e.id) && (e.from === s.highlightNodeId || e.to === s.highlightNodeId) && (e.from === n.id || e.to === n.id));
+        opacity = touches ? 1 : 0.2;
+      }
+      const className = n.kind === 'table' ? 'c-table' : (n.kind === 'program_unit' ? 'c-proc' : 'c-alert');
+      const textColor = n.kind === 'table' ? '#475569' : (n.kind === 'program_unit' ? '#0f766e' : '#be123c');
+      const isTwoLine = n.kind === 'program_unit';
+      const isOneLine = n.kind === 'table';
+      const isUnknown = n.kind === 'unknown';
+      let line1 = n.name, line2 = '';
+      if (isTwoLine) { const parts = n.name.split('.'); line1 = parts[0]; line2 = parts[1] || ''; }
+      if (isUnknown) { line1 = 'UNKNOWN'; line2 = '(unresolved dynamic target)'; }
+      return {
+        id: n.id, x: p.x, y: p.y, w: p.w, h: p.h, cx: p.x + p.w / 2,
+        line1Box: { y: isTwoLine ? p.y + p.h / 2 - 15 : p.y + p.h / 2 - 8 },
+        line2Box: { y: isTwoLine ? p.y + p.h / 2 + 1 : p.y + p.h / 2 + 9 },
+        line1, line2, className, textColor, isTwoLine, isOneLine, isUnknown, opacity,
+        dash: isUnknown ? '4,3' : '',
+        groupStyle: { opacity, cursor: 'pointer' },
+        onClick: () => this.onNodeClick(n.id)
+      };
+    });
+
+    const searchHighlights = q ? ir.nodes.filter(n => n.name.toLowerCase().includes(q) && nodeVisibleFrom[n.id]).map(n => {
+      const p = layout.pos[n.id];
+      return { x: p.x - 6, y: p.y - 6, w: p.w + 12, h: p.h + 12 };
+    }) : [];
+
+    const sel = (() => {
+      const e = ir.edges.find(x => x.id === s.selectedEdgeId);
+      if (!e) return null;
+      const fromNode = byId[e.from], toNode = byId[e.to];
+      return {
+        op: e.op || (e.type === 'call' ? 'CALL' : ''), fromName: fromNode.name, toName: toNode.name,
+        line: e.line, sqlId: e.sql_id || '—', confidence: e.confidence || '—', resolvedVia: e.resolved_via || '—',
+        reachability: e.reachability || '—', hasGuard: !!e.guard, guard: e.guard || '',
+        hasTrigger: !!e.via_trigger, viaTrigger: e.via_trigger || '',
+        provenance: (e.provenance || []).join(' + '), hasTraceOrder: e.trace_order != null, traceOrder: e.trace_order
+      };
+    })();
+
+    const chipStyle = (active) => ({ fontSize: '10.5px', fontFamily: "'IBM Plex Mono',ui-monospace,Menlo,monospace", padding: '5px 9px', borderRadius: '4px', cursor: 'pointer', border: `1px solid ${active ? '#1e293b' : '#cbd5e1'}`, color: active ? '#1e293b' : '#94a3b8', background: active ? '#ffffff' : '#f1f5f9' });
+    const orderBtnStyle = (active) => ({ fontSize: '11px', fontFamily: "'IBM Plex Mono',ui-monospace,Menlo,monospace", padding: '6px 12px', cursor: 'pointer', color: active ? '#ffffff' : '#475569', background: active ? '#1e293b' : '#ffffff' });
+
+    return {
+      hasStale, freshnessTraceText,
+      searchQuery: s.searchQuery, onSearchChange: this.onSearchChange,
+      chipDynamicStyle: chipStyle(s.showDynamic), chipTriggerStyle: chipStyle(s.showTrigger), chipBranchStyle: chipStyle(s.showBranch),
+      toggleChipDynamic: this.toggleChipDynamic, toggleChipTrigger: this.toggleChipTrigger, toggleChipBranch: this.toggleChipBranch,
+      highlightActive: !!s.highlightNodeId, clearHighlight: this.clearHighlight,
+      toggleDetailOpen: this.toggleDetailOpen, detailToggleLabel: s.detailOpen ? 'hide panel ▸' : '◂ show panel',
+      viewBoxStr: `0 0 ${layout.width} ${layout.height}`,
+      panTransform: `translate(${s.tx},${s.ty}) scale(${s.scale})`,
+      canvasCursor: s.dragging ? 'grabbing' : 'grab',
+      onWheel: this.onWheel, onPointerDown: this.onPointerDown, onPointerMove: this.onPointerMove, onPointerUp: this.onPointerUp,
+      edgeVisuals, nodeVisuals, searchHighlights,
+      detailOpen: s.detailOpen, hasSelectedEdge: !!sel, noSelection: !sel, sel,
+      copyUnitLine: this.copyUnitLine, copyLabel: s.copied ? 'copied ✓' : 'copy unit:line',
+      playLabel: s.playing ? 'pause' : 'play ▸', togglePlay: this.togglePlay,
+      maxStep, currentStep, onScrub: this.onScrub,
+      stepCounterText: `step ${currentStep} / ${maxStep}`,
+      setOrderStatic: this.setOrderStatic, setOrderTrace: this.setOrderTrace,
+      staticBtnStyle: orderBtnStyle(s.orderMode === 'static'), traceBtnStyle: orderBtnStyle(s.orderMode === 'trace'),
+      hasAppendedNote: appendedCount > 0, appendedNoteText: `+${appendedCount} static-only, not observed in trace (appended)`
+    };
+  }
+}
+</script>
+</body>
+</html>

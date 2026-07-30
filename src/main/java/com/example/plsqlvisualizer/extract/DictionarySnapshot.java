@@ -1,0 +1,165 @@
+package com.example.plsqlvisualizer.extract;
+
+import com.example.plsqlvisualizer.db.DictionaryClient;
+import com.example.plsqlvisualizer.db.IdentifierRow;
+import com.example.plsqlvisualizer.db.ObjectRow;
+import com.example.plsqlvisualizer.db.RawCall;
+import com.example.plsqlvisualizer.db.RawWrite;
+import com.example.plsqlvisualizer.db.StatementRow;
+import com.example.plsqlvisualizer.db.SynonymRow;
+import com.example.plsqlvisualizer.db.TriggerRow;
+import com.example.plsqlvisualizer.db.UnitKey;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Everything the extractors need, pulled from the dictionary once and held in
+ * memory. Two reasons this exists rather than each extractor querying:
+ * resolving a statement to its enclosing subprogram means walking the
+ * usage-context tree, which is a per-row lookup that would otherwise be a
+ * per-row round trip.
+ */
+public class DictionarySnapshot {
+
+    private final String schema;
+    private final List<RawWrite> writes;
+    private final List<RawCall> calls;
+    private final List<StatementRow> statements;
+    private final List<SynonymRow> synonyms;
+    private final List<TriggerRow> triggers;
+    private final List<ObjectRow> objects;
+    private final Map<UnitKey, List<String>> source;
+
+    /** (unit, usageId) → identifier, for the upward walk. */
+    private final Map<UnitKey, Map<Long, IdentifierRow>> identifiersByUsageId = new HashMap<>();
+
+    /** Memoised results of {@link #scopeOf} — the same context is hit repeatedly. */
+    private final Map<UnitKey, Map<Long, EnclosingScope>> scopeCache = new HashMap<>();
+
+    /** Subprogram definitions per unit, ordered by line, for {@link #subprogramRange}. */
+    private final Map<UnitKey, List<IdentifierRow>> subprogramsByUnit = new HashMap<>();
+
+    private final Map<UnitKey, ReachabilityAnalyzer> reachabilityCache = new HashMap<>();
+
+    public DictionarySnapshot(DictionaryClient client) throws SQLException {
+        this.schema = client.schema();
+        this.writes = client.writes();
+        this.calls = client.calls();
+        this.statements = client.statements();
+        this.synonyms = client.synonyms();
+        this.triggers = client.triggers();
+        this.objects = client.objects();
+        this.source = client.source();
+
+        for (IdentifierRow row : client.identifiers()) {
+            identifiersByUsageId
+                    .computeIfAbsent(row.unit(), k -> new HashMap<>())
+                    .put(row.usageId(), row);
+            if (row.isSubprogramDefinition() && "DEFINITION".equals(row.usage())) {
+                subprogramsByUnit.computeIfAbsent(row.unit(), k -> new ArrayList<>()).add(row);
+            }
+        }
+        subprogramsByUnit.values()
+                .forEach(rows -> rows.sort(Comparator.comparingInt(IdentifierRow::line)));
+    }
+
+    public String schema() {
+        return schema;
+    }
+
+    public List<RawWrite> writes() {
+        return writes;
+    }
+
+    public List<RawCall> calls() {
+        return calls;
+    }
+
+    public List<StatementRow> statements() {
+        return statements;
+    }
+
+    public List<SynonymRow> synonyms() {
+        return synonyms;
+    }
+
+    public List<TriggerRow> triggers() {
+        return triggers;
+    }
+
+    public List<ObjectRow> objects() {
+        return objects;
+    }
+
+    public List<String> sourceOf(UnitKey unit) {
+        return source.getOrDefault(unit, List.of());
+    }
+
+    /** Reachability analysis for a unit, built from its source text once. */
+    public ReachabilityAnalyzer reachability(UnitKey unit) {
+        return reachabilityCache.computeIfAbsent(unit, u -> new ReachabilityAnalyzer(sourceOf(u)));
+    }
+
+    /**
+     * The 1-based, inclusive line range a subprogram occupies, taken as "from its
+     * definition to just before the next one". Rough, but enough to keep a
+     * source-text search from wandering into a neighbouring procedure.
+     */
+    public int[] subprogramRange(UnitKey unit, String subprogram) {
+        List<IdentifierRow> rows = subprogramsByUnit.getOrDefault(unit, List.of());
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).name().equals(subprogram)) {
+                int start = rows.get(i).line();
+                int end = i + 1 < rows.size() ? rows.get(i + 1).line() - 1 : Integer.MAX_VALUE;
+                return new int[] {start, end};
+            }
+        }
+        return new int[] {1, Integer.MAX_VALUE};
+    }
+
+    /**
+     * Walks from {@code contextId} up the usage-context chain to the enclosing
+     * subprogram.
+     *
+     * <p>The chain length varies: a top-level statement's context is the
+     * subprogram itself, a call's context is the package reference in front of
+     * it, and a statement inside a FOR loop hangs off the loop's ITERATOR. The
+     * walk handles all three by simply climbing until it finds a definition.
+     */
+    public EnclosingScope scopeOf(UnitKey unit, long contextId) {
+        Map<Long, EnclosingScope> cache = scopeCache.computeIfAbsent(unit, k -> new HashMap<>());
+        EnclosingScope cached = cache.get(contextId);
+        if (cached != null) {
+            return cached;
+        }
+
+        Map<Long, IdentifierRow> byId = identifiersByUsageId.getOrDefault(unit, Map.of());
+        boolean sawIterator = false;
+        long current = contextId;
+        // usage_context_id 0 means "top of the unit"; the guard also stops a
+        // malformed cycle from spinning forever.
+        for (int hops = 0; current != 0 && hops < 100; hops++) {
+            IdentifierRow row = byId.get(current);
+            if (row == null) {
+                break;
+            }
+            if (row.isIterator()) {
+                sawIterator = true;
+            }
+            if (row.isSubprogramDefinition() || row.isTriggerDefinition()) {
+                EnclosingScope scope = new EnclosingScope(row.name(), sawIterator);
+                cache.put(contextId, scope);
+                return scope;
+            }
+            current = row.usageContextId();
+        }
+
+        EnclosingScope scope = EnclosingScope.unknown();
+        cache.put(contextId, scope);
+        return scope;
+    }
+}

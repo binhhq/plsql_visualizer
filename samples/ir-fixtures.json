@@ -1,0 +1,274 @@
+{
+  "meta" : {
+    "schema_version" : "1.0",
+    "db" : "TSCOPE_TEST",
+    "entry_point" : "TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "static_source" : {
+      "generated_at" : "2026-07-30T06:44:27.318565Z",
+      "units" : [ {
+        "owner" : "TSCOPE_TEST",
+        "name" : "PKG_DYNAMIC",
+        "type" : "PACKAGE BODY",
+        "last_ddl_time" : "2026-07-29T04:39:51Z"
+      }, {
+        "owner" : "TSCOPE_TEST",
+        "name" : "PKG_ORDER",
+        "type" : "PACKAGE BODY",
+        "last_ddl_time" : "2026-07-29T04:39:51Z"
+      }, {
+        "owner" : "TSCOPE_TEST",
+        "name" : "PKG_POSITION",
+        "type" : "PACKAGE BODY",
+        "last_ddl_time" : "2026-07-29T04:39:51Z"
+      }, {
+        "owner" : "TSCOPE_TEST",
+        "name" : "PKG_VALIDATE",
+        "type" : "PACKAGE BODY",
+        "last_ddl_time" : "2026-07-29T23:41:49Z"
+      }, {
+        "owner" : "TSCOPE_TEST",
+        "name" : "TRG_ORDER_AUDIT",
+        "type" : "TRIGGER",
+        "last_ddl_time" : "2026-07-29T04:39:50Z"
+      } ]
+    },
+    "trace_source" : {
+      "present" : false
+    }
+  },
+  "nodes" : [ {
+    "id" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "kind" : "program_unit",
+    "unit" : "PKG_ORDER",
+    "subprogram" : "SUBMIT",
+    "unit_type" : "PACKAGE BODY"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.ORDERS",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "ORDERS"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.CASH_BALANCE",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "CASH_BALANCE"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.ORDER_LOG",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "ORDER_LOG"
+  }, {
+    "id" : "PROC:TSCOPE_TEST.PKG_ORDER.MARK_FILLED",
+    "kind" : "program_unit",
+    "unit" : "PKG_ORDER",
+    "subprogram" : "MARK_FILLED",
+    "unit_type" : "PACKAGE BODY"
+  }, {
+    "id" : "PROC:TSCOPE_TEST.PKG_POSITION.APPLY_FILL",
+    "kind" : "program_unit",
+    "unit" : "PKG_POSITION",
+    "subprogram" : "APPLY_FILL",
+    "unit_type" : "PACKAGE BODY"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.POSITIONS",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "POSITIONS"
+  }, {
+    "id" : "PROC:TSCOPE_TEST.PKG_VALIDATE.CHECK_ORDER",
+    "kind" : "program_unit",
+    "unit" : "PKG_VALIDATE",
+    "subprogram" : "CHECK_ORDER",
+    "unit_type" : "PACKAGE BODY"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.VALIDATE_STATS",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "VALIDATE_STATS"
+  }, {
+    "id" : "PROC:TSCOPE_TEST.PKG_DYNAMIC.LOG_DYNAMIC",
+    "kind" : "program_unit",
+    "unit" : "PKG_DYNAMIC",
+    "subprogram" : "LOG_DYNAMIC",
+    "unit_type" : "PACKAGE BODY"
+  }, {
+    "id" : "TBL:__UNKNOWN__",
+    "kind" : "unknown"
+  }, {
+    "id" : "TBL:TSCOPE_TEST.ORDER_AUDIT",
+    "kind" : "table",
+    "schema" : "TSCOPE_TEST",
+    "name" : "ORDER_AUDIT"
+  } ],
+  "edges" : [ {
+    "id" : "e1",
+    "type" : "call",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "PROC:TSCOPE_TEST.PKG_VALIDATE.CHECK_ORDER",
+    "step" : 1,
+    "line" : 7,
+    "confidence" : "resolved",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e2",
+    "type" : "write",
+    "op" : "UPDATE",
+    "from" : "PROC:TSCOPE_TEST.PKG_VALIDATE.CHECK_ORDER",
+    "to" : "TBL:TSCOPE_TEST.VALIDATE_STATS",
+    "step" : 2,
+    "line" : 13,
+    "sql_id" : "g1cmhh2ukhv7m",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e3",
+    "type" : "write",
+    "op" : "INSERT",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "TBL:TSCOPE_TEST.ORDERS",
+    "step" : 3,
+    "line" : 11,
+    "sql_id" : "5h5s33cmnyb8f",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e4",
+    "type" : "write",
+    "op" : "INSERT",
+    "from" : "TBL:TSCOPE_TEST.ORDERS",
+    "to" : "TBL:TSCOPE_TEST.ORDER_AUDIT",
+    "step" : 4,
+    "line" : 5,
+    "sql_id" : "77u5ax58fxzt1",
+    "confidence" : "trigger-induced",
+    "resolved_via" : "direct",
+    "via_trigger" : "TRG_ORDER_AUDIT",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e5",
+    "type" : "write",
+    "op" : "UPDATE",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "TBL:TSCOPE_TEST.ORDERS",
+    "step" : 5,
+    "line" : 15,
+    "sql_id" : "7w7u0u31ytj7r",
+    "confidence" : "resolved",
+    "resolved_via" : "synonym",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e6",
+    "type" : "write",
+    "op" : "UPDATE",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "TBL:TSCOPE_TEST.CASH_BALANCE",
+    "step" : 6,
+    "line" : 18,
+    "sql_id" : "cryq7fcmy9tmc",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e7",
+    "type" : "write",
+    "op" : "INSERT",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "TBL:TSCOPE_TEST.ORDER_LOG",
+    "step" : 7,
+    "line" : 24,
+    "sql_id" : "bq5719bfjkb67",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "branch-conditional",
+    "guard" : "IF p_market = 'HOSE'",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e8",
+    "type" : "call",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "PROC:TSCOPE_TEST.PKG_DYNAMIC.LOG_DYNAMIC",
+    "step" : 8,
+    "line" : 28,
+    "confidence" : "resolved",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e9",
+    "type" : "write",
+    "op" : "INSERT",
+    "from" : "PROC:TSCOPE_TEST.PKG_DYNAMIC.LOG_DYNAMIC",
+    "to" : "TBL:__UNKNOWN__",
+    "step" : 9,
+    "line" : 8,
+    "confidence" : "dynamic-unknown",
+    "reachability" : "unconditional",
+    "raw_text" : "v_sql := 'INSERT INTO ' || v_tbl || ' (order_id, note) VALUES (:1, :2)';",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e10",
+    "type" : "call",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.SUBMIT",
+    "to" : "PROC:TSCOPE_TEST.PKG_POSITION.APPLY_FILL",
+    "step" : 10,
+    "line" : 30,
+    "confidence" : "resolved",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e11",
+    "type" : "write",
+    "op" : "MERGE",
+    "from" : "PROC:TSCOPE_TEST.PKG_POSITION.APPLY_FILL",
+    "to" : "TBL:TSCOPE_TEST.POSITIONS",
+    "step" : 11,
+    "line" : 5,
+    "sql_id" : "bsrz113mutwk4",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e12",
+    "type" : "write",
+    "op" : "UPDATE",
+    "from" : "PROC:TSCOPE_TEST.PKG_POSITION.APPLY_FILL",
+    "to" : "TBL:TSCOPE_TEST.POSITIONS",
+    "step" : 12,
+    "line" : 14,
+    "sql_id" : "d7y69srxt004q",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "loop",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e13",
+    "type" : "call",
+    "from" : "PROC:TSCOPE_TEST.PKG_POSITION.APPLY_FILL",
+    "to" : "PROC:TSCOPE_TEST.PKG_ORDER.MARK_FILLED",
+    "step" : 13,
+    "line" : 18,
+    "confidence" : "resolved",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  }, {
+    "id" : "e14",
+    "type" : "write",
+    "op" : "UPDATE",
+    "from" : "PROC:TSCOPE_TEST.PKG_ORDER.MARK_FILLED",
+    "to" : "TBL:TSCOPE_TEST.ORDERS",
+    "step" : 14,
+    "line" : 35,
+    "sql_id" : "9gs9g2g86hwt3",
+    "confidence" : "resolved",
+    "resolved_via" : "direct",
+    "reachability" : "unconditional",
+    "provenance" : [ "static" ]
+  } ]
+}

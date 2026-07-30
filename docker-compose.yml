@@ -1,0 +1,33 @@
+# Oracle 23ai Free for the PL/SQL Data-Flow Visualizer.
+# Native arm64 image (Apple Silicon) with full PL/Scope support.
+#
+#   docker compose up -d          # start the DB
+#   ./scripts/oracle-bootstrap.sh # load fixtures + turn PL/Scope on
+#
+# Connect:  jdbc:oracle:thin:@//localhost:1521/FREEPDB1  (user tscope_test / tscope)
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: plsql-oracle
+    ports:
+      - "1521:1521"
+    environment:
+      # SYS / SYSTEM password
+      ORACLE_PASSWORD: oracle
+      # Auto-created application schema in FREEPDB1 — this is the schema the
+      # extractor connects as (the queries use USER_* dictionary views).
+      APP_USER: tscope_test
+      APP_USER_PASSWORD: tscope
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      # Fixture SQL, mounted read-only so the bootstrap script can @ them.
+      - ./docs:/docs:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+volumes:
+  oracle-data:
