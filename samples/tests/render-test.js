@@ -127,4 +127,27 @@ console.log("  scrub.max =", JSON.stringify(idEl("scrub").max), " counter =", JS
 check("    scrub.max", idEl("scrub").max, "2");
 check("    counter", idEl("counter").textContent, "step 2 / 2");
 
+// classList.toggle(name, undefined) flips instead of clearing, so an unset
+// filter used to invert .dimmed on every render — the graph strobed between
+// full and 16% opacity once per playback tick. Repeated renders with no filter
+// active must leave every edge undimmed.
+console.log("\nrepeated renders with no filter must not strobe .dimmed:");
+type("");
+const scrubEl = idEl("scrub");
+const dimmed = () => edgesLayer.children.filter((g) => g.classList.contains("dimmed")).length;
+const strobe = [dimmed()];
+for (let i = 0; i < 3; i++) { scrubEl.dispatch("input"); strobe.push(dimmed()); }
+console.log("  dimmed count per render:", JSON.stringify(strobe));
+check("    dimmed edges across 4 renders", strobe, [0, 0, 0, 0]);
+
+// Every edge in the steppable sequence carries an ordinal; the never-ran set
+// carries none, because it holds no position in the run.
+const discs = () => edgesLayer.children
+  .filter((g) => g.children.some((c) => c.attrs && c.attrs.class === "seq-bg")).length;
+console.log("\nordinal discs:");
+check("    one per sequenced edge (static: all 15)", discs(), 15);
+type("PKG_VALIDATE");
+check("    rebuilt for the scoped sequence", discs(), 2);
+type("");
+
 summary("render-test");

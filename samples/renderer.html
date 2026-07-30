@@ -257,6 +257,10 @@
   .e-tag     { font: italic 9.5px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
   .e-loop    { font: 11px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--ink); }
   .badge-bg  { fill: var(--ground); stroke: var(--hairline); stroke-width: 1; }
+  /* Position in the sequence being stepped through. Filled, not outlined, so it
+     reads as an ordinal rather than another operation tag. */
+  .seq-bg    { fill: var(--c-proc-stroke); stroke: none; }
+  .e-seq     { font: 700 9px ui-monospace, "SF Mono", Menlo, monospace; fill: var(--ground); }
 
   .edge { cursor: pointer; }
   .edge .hit { stroke: transparent; stroke-width: 14; fill: none; }
@@ -395,6 +399,11 @@
     <button class="btn mono" id="play" style="min-width:62px">▶ play</button>
     <input type="range" id="scrub" min="0" max="14" value="14" aria-label="Step through the data flow" />
     <div class="counter tnum" id="counter"></div>
+    <div class="segmented" role="group" aria-label="Playback speed">
+      <button id="speed-slow" aria-pressed="false">0.5×</button>
+      <button id="speed-1x" aria-pressed="true">1×</button>
+      <button id="speed-fast" aria-pressed="false">2×</button>
+    </div>
     <div class="segmented" role="group" aria-label="Order edges by">
       <button id="order-static" aria-pressed="true">static</button>
       <button id="order-trace" aria-pressed="false" disabled title="No runtime trace in this IR">trace_order</button>
@@ -725,6 +734,7 @@
   var IR = JSON.parse(document.getElementById("ir-data").textContent);
 
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var VIEW_W = 680;
   var COL_A_X = 34, PROC_W = 208, PROC_H = 46, PROC_GAP = 24;
   var COL_B_X = 468, TABLE_W = 158, TABLE_H = 42, TABLE_GAP = 22;
   var TOP = 34;
@@ -866,7 +876,7 @@
       TOP + stores.length * (TABLE_H + TABLE_GAP),
       120
     ) + 30;
-    document.getElementById("graph").setAttribute("viewBox", "0 0 680 " + height);
+    document.getElementById("graph").setAttribute("viewBox", "0 0 " + VIEW_W + " " + height);
   }
 
   // ---------------------------------------------------------------- roles
@@ -901,6 +911,42 @@
     var rx = b.x + b.w + 30;
     return { d: "M" + (a.x + a.w) + "," + ay + " C" + rx + "," + ay + " " + rx + "," + by + " " + (b.x + b.w) + "," + by,
              lx: b.x + b.w + 20, ly: (ay + by) / 2 };
+  }
+
+  // Fractions along an edge an ordinal disc may occupy, in order of preference.
+  // Staying on the path is what keeps a number attached to its own edge, so the
+  // disc slides along the curve to dodge a neighbour rather than floating off it.
+  var SEQ_FRACS = [0.30, 0.24, 0.37, 0.19, 0.44, 0.14, 0.52, 0.60];
+
+  /**
+   * Places an ordinal disc on its edge, avoiding discs already placed.
+   *
+   * Several edges between neighbouring rows share a midpoint, so a fixed
+   * position piles the numbers up exactly where the order matters most. This
+   * walks the candidate fractions and takes the first that clears every disc in
+   * `placed` by `gap`; if none do, it keeps the roomiest one, because a slightly
+   * crowded number still beats no number.
+   *
+   * Falls back to the label point when the path cannot be measured —
+   * getTotalLength throws on a degenerate `d`.
+   */
+  function seqPoint(pathEl, p, placed, gap) {
+    var len;
+    try { len = pathEl.getTotalLength(); } catch (err) { len = 0; }
+    if (!len) return { x: p.lx, y: p.ly };
+
+    var best = null, bestClear = -1;
+    for (var i = 0; i < SEQ_FRACS.length; i++) {
+      var pt = pathEl.getPointAtLength(len * SEQ_FRACS[i]);
+      var clear = Infinity;
+      for (var j = 0; j < placed.length; j++) {
+        var dx = pt.x - placed[j].x, dy = pt.y - placed[j].y;
+        clear = Math.min(clear, Math.sqrt(dx * dx + dy * dy));
+      }
+      if (clear >= gap) return { x: pt.x, y: pt.y };
+      if (clear > bestClear) { bestClear = clear; best = { x: pt.x, y: pt.y }; }
+    }
+    return best;
   }
 
   function el(name, attrs) {
@@ -960,28 +1006,57 @@
     });
   }
 
-  function drawEdges(edges) {
+  /**
+   * `seqOf` maps an edge id to its 1-based position in the sequence currently
+   * being stepped through. Edges absent from it — the trace's never-ran set —
+   * get no ordinal, because they hold no position in the run.
+   *
+   * The ordinal sits a fraction along its own path rather than at the shared
+   * label point: several edges between neighbouring rows land on the same
+   * midpoint, and an ordinal that piled up there would be unreadable exactly
+   * where the order matters most. The fraction is staggered by position so
+   * consecutive edges separate even when their curves nearly coincide.
+   */
+  function drawEdges(edges, seqOf) {
     layerEdges.textContent = "";
     edgeEls = {};
+    // Disc centres already committed, so each new ordinal can dodge them.
+    var seqPlaced = [];
 
     edges.forEach(function (e) {
       if (!box[e.from] || !box[e.to]) return;
       var role = edgeRole(e);
       var p = pathFor(e);
+      var n = seqOf[e.id];
 
       var g = el("g", { class: "edge", tabindex: "0", role: "button" });
       g.setAttribute("aria-label",
-        "Step " + e.step + ": " + (e.op || "call") + " " + shortName(e.from) + " to " + shortName(e.to));
+        (n ? "Step " + n + " of " + Object.keys(seqOf).length : "Never ran in this trace")
+        + ": " + (e.op || "call") + " " + shortName(e.from) + " to " + shortName(e.to));
 
-      g.appendChild(el("path", { d: p.d, class: "e-" + role, "marker-end": "url(#" + MARKER[role] + ")" }));
+      var stroke = el("path", { d: p.d, class: "e-" + role, "marker-end": "url(#" + MARKER[role] + ")" });
+      g.appendChild(stroke);
       g.appendChild(el("path", { d: p.d, class: "hit" }));
 
+      var wBadge = e.op ? e.op.length * 6.4 + 12 : 0;
       if (e.op) {
-        var wBadge = e.op.length * 6.4 + 12;
         g.appendChild(el("rect", { x: p.lx - wBadge / 2, y: p.ly - 8, width: wBadge, height: 16, rx: 3, class: "badge-bg" }));
         var badge = el("text", { x: p.lx, y: p.ly + 3.5, "text-anchor": "middle", class: "e-badge" });
         badge.textContent = e.op;
         g.appendChild(badge);
+      }
+      if (n) {
+        // Two digits still fit a 9px-radius disc; three would not, so widen it.
+        var r = String(n).length > 2 ? 11 : 9;
+        var at = seqPoint(stroke, p, seqPlaced, 2 * r + 3);
+        // Keep the disc wholly inside the viewBox: the proc-to-proc call paths
+        // bow out to x = a.x - 24, which is close enough to 0 to clip.
+        var cx = Math.max(r + 2, Math.min(VIEW_W - r - 2, at.x));
+        seqPlaced.push({ x: cx, y: at.y });
+        g.appendChild(el("circle", { cx: cx, cy: at.y, r: r, class: "seq-bg" }));
+        var sn = el("text", { x: cx, y: at.y + 3.2, "text-anchor": "middle", class: "e-seq" });
+        sn.textContent = n;
+        g.appendChild(sn);
       }
       if (e.guard) {
         var gt = el("text", { x: p.lx, y: p.ly + 20, "text-anchor": "middle", class: "e-guard" });
@@ -1054,9 +1129,13 @@
     // Everything in scope is laid out and drawn, including whatever the trace
     // never reached — only the steppable sequence is state.edges.
     var drawn = state.edges.concat(state.offstage);
+    // Ordinals are positions in *this* sequence, so they are rebuilt whenever the
+    // scope or the ordering changes — they are not the IR's global `step`.
+    var seqOf = {};
+    state.edges.forEach(function (e, i) { seqOf[e.id] = i + 1; });
     layout(drawn);
     drawNodes(state.inScope);
-    drawEdges(drawn);
+    drawEdges(drawn, seqOf);
 
     state.pos = state.edges.length;
     scrub.max = String(state.edges.length);
@@ -1067,7 +1146,11 @@
 
   function render() {
     var shown = {};
-    var anyFilter = state.filters.dynamic || state.filters.trigger || state.filters.branch;
+    // Boolean, not just truthy: classList.toggle treats an `undefined` second
+    // argument as "not passed" and flips the class instead of clearing it, so an
+    // unset filter used to invert .dimmed on every render — the whole graph
+    // strobing between full and 16% opacity once per playback tick.
+    var anyFilter = Boolean(state.filters.dynamic || state.filters.trigger || state.filters.branch);
 
     state.edges.forEach(function (e, i) {
       var g = edgeEls[e.id];
@@ -1222,11 +1305,27 @@
 
   var timer = null;
   var playBtn = document.getElementById("play");
+  var BASE_MS = 780;
+  var speed = 1;
 
   function stop() {
     if (timer) { clearInterval(timer); timer = null; }
     state.playing = false;
     playBtn.textContent = "▶ play";
+  }
+
+  function tick() {
+    if (state.pos >= state.edges.length) { stop(); return; }
+    state.pos += 1;
+    scrub.value = String(state.pos);
+    render();
+  }
+
+  // Separate from stop() so a speed change can re-arm the timer without the
+  // button flipping back to "play" mid-run.
+  function arm() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(tick, BASE_MS / speed);
   }
 
   playBtn.addEventListener("click", function () {
@@ -1235,12 +1334,18 @@
     if (state.pos >= state.edges.length) { state.pos = 0; scrub.value = "0"; render(); }
     state.playing = true;
     playBtn.textContent = "❚❚ pause";
-    timer = setInterval(function () {
-      if (state.pos >= state.edges.length) { stop(); return; }
-      state.pos += 1;
-      scrub.value = String(state.pos);
-      render();
-    }, 780);
+    arm();
+  });
+
+  [["speed-slow", 0.5], ["speed-1x", 1], ["speed-fast", 2]].forEach(function (pair) {
+    document.getElementById(pair[0]).addEventListener("click", function () {
+      speed = pair[1];
+      ["speed-slow", "speed-1x", "speed-fast"].forEach(function (id) {
+        document.getElementById(id).setAttribute("aria-pressed", id === pair[0] ? "true" : "false");
+      });
+      // Take effect now rather than after the interval already in flight.
+      if (state.playing) arm();
+    });
   });
 
   function chip(id, key) {
