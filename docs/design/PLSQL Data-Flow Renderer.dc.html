@@ -257,19 +257,19 @@ function computeLayout(ir){
   const byLayer = {};
   ir.nodes.forEach(n=>{ const l=layer[n.id]||0; (byLayer[l]=byLayer[l]||[]).push(n); });
   const layerKeys = Object.keys(byLayer).map(Number).sort((a,b)=>a-b);
-  const colGap=270, rowGap=76, marginX=50, marginY=60;
+  const rowGap=130, colGap=240, marginX=60, marginY=50;
   const pos = {};
   layerKeys.forEach(l=>{
     const arr = byLayer[l].sort((a,b)=>(firstStep[a.id]??999)-(firstStep[b.id]??999));
     arr.forEach((n,i)=>{
       let w,h;
       if(n.kind==='program_unit'){w=PROC_W;h=PROC_H;} else if(n.kind==='unknown'){w=UNK_W;h=UNK_H;} else {w=TABLE_W;h=TABLE_H;}
-      pos[n.id] = {x: marginX + l*colGap, y: marginY + i*rowGap, w, h, kind:n.kind, name:n.name};
+      pos[n.id] = {x: marginX + i*colGap, y: marginY + l*rowGap, w, h, kind:n.kind, name:n.name};
     });
   });
   const maxLayer = layerKeys.length ? Math.max(...layerKeys) : 0;
-  const maxRows = layerKeys.length ? Math.max(...layerKeys.map(l=>byLayer[l].length)) : 1;
-  return {pos, width: marginX*2 + maxLayer*colGap + 220, height: marginY*2 + maxRows*rowGap};
+  const maxCols = layerKeys.length ? Math.max(...layerKeys.map(l=>byLayer[l].length)) : 1;
+  return {pos, width: marginX*2 + maxCols*colGap + 60, height: marginY*2 + maxLayer*rowGap + 100};
 }
 
 class Component extends DCLogic {
@@ -388,10 +388,10 @@ class Component extends DCLogic {
       const active = e.id === activeId;
       const notInTrace = s.orderMode === 'trace' && e.trace_order == null;
       const from = layout.pos[e.from], to = layout.pos[e.to];
-      const x1 = from.x + from.w, y1 = from.y + from.h / 2;
-      const x2 = to.x, y2 = to.y + to.h / 2;
-      const dx = (x2 - x1) / 2;
-      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+      const x1 = from.x + from.w / 2, y1 = from.y + from.h;
+      const x2 = to.x + to.w / 2, y2 = to.y;
+      const dy = (y2 - y1) / 2;
+      const d = `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
       const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
       const isWrite = e.type === 'write';
       const highlightOn = !!s.highlightNodeId;
@@ -406,8 +406,7 @@ class Component extends DCLogic {
       const strokeWidth = isWrite ? (active ? 2.4 : 1.5) : 1;
       const dash = e.confidence === 'trigger-induced' ? '5,4' : (isWrite ? '' : '2,3');
 
-      const angle = 0;
-      const arrowPoints = `${x2 - 7},${y2 - 4} ${x2},${y2} ${x2 - 7},${y2 + 4}`;
+      const arrowPoints = `${x2 - 4},${y2 - 7} ${x2},${y2} ${x2 + 4},${y2 - 7}`;
 
       const hasGuard = e.reachability === 'branch-conditional' && !!e.guard;
       const guardShort = hasGuard ? (e.guard.length > 26 ? e.guard.slice(0, 24) + '…' : e.guard) : '';
