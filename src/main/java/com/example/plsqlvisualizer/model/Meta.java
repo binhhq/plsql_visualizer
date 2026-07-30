@@ -17,6 +17,13 @@ public record Meta(
         @JsonProperty("static_source") StaticSource staticSource,
         @JsonProperty("trace_source") TraceSource traceSource) {
 
-    /** The frozen contract version this build emits. */
-    public static final String SCHEMA_VERSION = "1.0";
+    /**
+     * The contract version this build emits.
+     *
+     * <p>1.1 added the trace lane's additive fields — {@code trace_count},
+     * {@code resolves}, the {@code trace-resolved} confidence, and the two
+     * {@code trace_source} counters. Nothing was removed or re-typed, so a 1.0
+     * renderer still draws a 1.1 file; it just ignores what it does not know.
+     */
+    public static final String SCHEMA_VERSION = "1.1";
 }

@@ -132,8 +132,54 @@ For the *true* order of one representative flow (e.g. place-order, settlement):
 Parse the trace → match statements back to IR edges by `SQL_ID` (PL/Scope gives
 `SQL_ID` on `ALL_STATEMENTS`) → stamp `trace_order` and add `"trace"` to
 `provenance`. Edges seen only at runtime (e.g. dynamic ones) get created as
-`trace-only`. **A code change never regenerates the trace** — it stays stale
+`trace-resolved`. **A code change never regenerates the trace** — it stays stale
 until the scenario is re-run; version it separately (§7).
+
+```bash
+--ir <ir.json> --trace <file.trc> [--scenario name]   # no database needed
+./scripts/capture-trace.sh HOSE | HNX                 # rebuild the fixtures
+```
+
+### What a real trace file actually looks like
+
+Four things about 10046 that are not obvious until you read one, all of them
+load-bearing. Each was found against the fixture flow, whose trace is committed
+under `src/test/resources/traces/`.
+
+1. **`tim` is stamped at completion, so nested statements come out backwards.**
+   A trigger's own INSERT runs inside the INSERT that fires it and therefore
+   *finishes first* — sorting by `tim` lists the audit row **before** the write
+   that caused it, the exact opposite of what §8 asks the renderer to draw. The
+   file is a post-order traversal tagged with depth; the parser rebuilds the tree
+   and walks it pre-order.
+
+2. **`dep` is not a noise filter.** It is tempting: our SQL is `dep=1`, Oracle's
+   internals are "deeper". False — Oracle's own dictionary lookups
+   (`idl_ub1$`, `procedure$`, `sysauth$`) run at `dep=1` too, while a trigger's
+   write — which we very much want — is at `dep=2`. Statements are matched by
+   `sql_id` instead, and unmatched writes are filtered by Oracle's `$` naming
+   convention. Beware: `update seq$ set increment$=…` parses as table `SET` if the
+   owner-qualifier rule does not insist on a literal dot.
+
+3. **A dynamic statement has a `sql_id` in the trace and none in the dictionary.**
+   That asymmetry *is* the recognition rule for a runtime-only write, and the
+   trace text carries the resolved table name — the one thing static analysis can
+   never supply. Attribution is by neighbourhood: the write ran between two
+   statements we did match, so the `dynamic-unknown` edge it explains must sit
+   between the same two edges in static order. One candidate means an answer;
+   anything else stays counted in `trace_source.unattributed` rather than guessed.
+
+4. **Capture cold.** With the packages already in the library cache, a trace of
+   this flow is ~370 lines of nothing but application SQL. After
+   `FLUSH SHARED_POOL` the same flow is ~10 000 lines, ~98% recursive dictionary
+   reads. The cold file is the realistic one, so that is what the fixtures are.
+
+### Calls get no `trace_order`
+
+A 10046 trace records SQL, not PL/SQL control flow, so `call` edges stay
+unstamped. Inferring "the call ran because the SQL inside it did" would be an
+inference dressed as a measurement. The real call tree needs `DBMS_HPROF` — a
+separate source, and still open.
 
 ---
 
@@ -144,7 +190,7 @@ This is the single contract both sides code against. Freeze it first.
 ```jsonc
 {
   "meta": {
-    "schema_version": "1.0",
+    "schema_version": "1.1",
     "db": "NEWFO_DEV",
     "entry_point": "APP.PKG_ORDER.SUBMIT",     // optional: root of the walk
     "static_source":  { "generated_at": "2026-07-28T10:00:00Z",
@@ -152,7 +198,9 @@ This is the single contract both sides code against. Freeze it first.
                                      "type":"PACKAGE BODY",
                                      "last_ddl_time":"2026-07-27T22:14:00Z" } ] },
     "trace_source":   { "present": true, "captured_at": "2026-07-26T09:00:00Z",
-                        "scenario": "place_order_hose" }
+                        "scenario": "place_order_hose",
+                        "not_executed": 1,     // statements the run never reached
+                        "unattributed": 0 }    // writes seen but tied to no edge
   },
 
   "nodes": [
@@ -173,7 +221,7 @@ This is the single contract both sides code against. Freeze it first.
       "step":2, "line":30, "sql_id":"8kyysdc8m75ag",
       "confidence":"resolved", "resolved_via":"direct",
       "reachability":"unconditional", "provenance":["static","trace"],
-      "trace_order":5 },
+      "trace_order":5, "trace_count":1 },
 
     { "id":"e3", "type":"write", "op":"INSERT",
       "from":"PROC:APP.PKG_ORDER.SUBMIT", "to":"TBL:APP.ORDER_LOG",
@@ -189,7 +237,16 @@ This is the single contract both sides code against. Freeze it first.
     { "id":"e5", "type":"write", "op":"INSERT",
       "from":"TBL:APP.ORDERS", "to":"TBL:APP.ORDER_AUDIT",
       "confidence":"trigger-induced", "via_trigger":"TRG_ORDER_AUDIT",
-      "provenance":["static"] }
+      "provenance":["static"] },
+
+    // What only a trace could name: the table e4's dynamic INSERT actually hit.
+    // e4 stays exactly as it is — static still cannot know this, and one run is
+    // not proof of what the code does. `resolves` pairs them; `step` is absent
+    // because a trace-only edge has no position in the static walk.
+    { "id":"t1", "type":"write", "op":"INSERT",
+      "from":"PROC:APP.PKG_DYNAMIC.LOG_DYNAMIC", "to":"TBL:APP.ORDER_LOG_202607",
+      "sql_id":"0f90zx1jvsgas", "confidence":"trace-resolved",
+      "provenance":["trace"], "trace_order":7, "trace_count":1, "resolves":"e4" }
   ]
 }
 ```
@@ -197,10 +254,23 @@ This is the single contract both sides code against. Freeze it first.
 ### Enums
 - `edge.type`: `write` | `call`
 - `edge.op` (write only): `INSERT` | `UPDATE` | `DELETE` | `MERGE`
-- `edge.confidence`: `resolved` | `dynamic-unknown` | `trigger-induced`
+- `edge.confidence`: `resolved` | `dynamic-unknown` | `trigger-induced` | `trace-resolved`
 - `edge.resolved_via` (write only): `direct` | `synonym` | `view`
 - `edge.reachability`: `unconditional` | `branch-conditional` | `loop`
 - `edge.provenance[]`: `static` | `trace`
+
+### Versions
+`1.1` added the trace lane's fields — `trace_count`, `resolves`, the
+`trace-resolved` confidence, and the two `trace_source` counters. All additive:
+nothing was removed or re-typed, so a renderer written against `1.0` still draws
+a `1.1` file and simply ignores what it does not recognise.
+
+**`trace_order` is the position of the *first* execution; `trace_count` is how
+many times the statement ran.** A loop body or a twice-called procedure stays one
+edge with a count rather than becoming several edges — the step slider needs one
+sortable position per edge, and "ran 14 times" is the interesting part anyway.
+A write with no `trace_order` in a file where `trace_source.present` is true did
+not run in that scenario. That is a finding, not missing data.
 
 **Design rule:** the renderer must be able to draw the whole graph from this file
 alone — no DB access. `sql_id` and `line` are the join keys back to the DB for
@@ -299,7 +369,8 @@ plsql-dataflow-tool/
     db/          DictionaryClient (runs the 05_* queries via JDBC)
     extract/     CallGraphExtractor, WriteExtractor, SynonymResolver,
                  TriggerExtractor, DynamicSqlFlagger
-    trace/       TraceParser (10046), HprofParser        (phase 2)
+    trace/       TraceParser (10046), TraceOrder, TraceMerger
+                 HprofParser — still open, for the real call tree
     model/       Node, Edge, Ir  + Jackson mapping
     graph/       IrBuilder (JGraphT), StepOrdinal
     freshness/   StalenessChecker (LAST_DDL_TIME), IrRefresher (decides
@@ -328,4 +399,6 @@ suite means the *honesty* rules hold, not just the happy path.
 4. `IrBuilder` (JGraphT) + `StepOrdinal`; emit IR; assert against `test-fixtures.md`.
 5. `StalenessChecker` (incremental re-extract).
 6. Generate a sample IR from the fixtures → hand to Claude Design for the renderer.
-7. (Phase 2) trace overlay: `TraceParser` + `trace_order` merge.
+7. Trace overlay: `TraceParser` + `trace_order` merge. **Done** — except the
+   renderer's `trace_order` toggle, which exists as a button with no handler
+   behind it, so a traced IR currently draws but cannot be re-ordered.

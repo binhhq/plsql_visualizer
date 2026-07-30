@@ -1,6 +1,6 @@
 {
   "meta": {
-    "schema_version": "1.0",
+    "schema_version": "1.1",
     "db": "NEWFO_DEV",
     "entry_point": "APP.PKG_ORDER.SUBMIT",
     "static_source": {
@@ -17,7 +17,9 @@
     "trace_source": {
       "present": true,
       "captured_at": "2026-07-26T09:00:00Z",
-      "scenario": "place_order_hose"
+      "scenario": "place_order_hose",
+      "not_executed": 1,
+      "unattributed": 0
     }
   },
   "nodes": [
@@ -64,7 +66,8 @@
       "resolved_via": "direct",
       "reachability": "unconditional",
       "provenance": ["static", "trace"],
-      "trace_order": 5
+      "trace_order": 5,
+      "trace_count": 1
     },
     {
       "id": "e3",
@@ -101,6 +104,19 @@
       "confidence": "trigger-induced",
       "via_trigger": "TRG_ORDER_AUDIT",
       "provenance": ["static"]
+    },
+    {
+      "id": "t1",
+      "type": "write",
+      "op": "INSERT",
+      "from": "PROC:APP.PKG_DYNAMIC.LOG_DYNAMIC",
+      "to": "TBL:APP.ORDER_LOG_202607",
+      "sql_id": "0f90zx1jvsgas",
+      "confidence": "trace-resolved",
+      "provenance": ["trace"],
+      "trace_order": 7,
+      "trace_count": 1,
+      "resolves": "e4"
     }
   ]
 }

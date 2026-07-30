@@ -37,6 +37,22 @@ public record Edge(
         /** Set on trigger-induced edges. */
         @JsonProperty("via_trigger") String viaTrigger,
         @JsonProperty("provenance") List<Provenance> provenance,
-        /** True order from a runtime trace; null until the trace lane runs. */
-        @JsonProperty("trace_order") Integer traceOrder) {
+        /**
+         * Position of this statement's <em>first</em> execution in the trace; null
+         * until the trace lane runs, and null afterwards for a statement the traced
+         * run never reached — which is a finding, not a gap.
+         */
+        @JsonProperty("trace_order") Integer traceOrder,
+        /**
+         * How many times the traced run executed this statement. A loop body or a
+         * twice-called procedure is one edge with a count, not several edges: the
+         * step slider needs one sortable position per edge, and "ran 14 times" is
+         * the interesting part anyway.
+         */
+        @JsonProperty("trace_count") Integer traceCount,
+        /**
+         * For a {@code trace-resolved} edge, the id of the {@code dynamic-unknown}
+         * edge whose target it explains.
+         */
+        @JsonProperty("resolves") String resolves) {
 }

@@ -40,9 +40,11 @@ class IrContractTest {
                 });
         assertThat(ir.meta().traceSource().present()).isTrue();
         assertThat(ir.meta().traceSource().scenario()).isEqualTo("place_order_hose");
+        assertThat(ir.meta().traceSource().notExecuted()).isEqualTo(1);
+        assertThat(ir.meta().traceSource().unattributed()).isZero();
 
         assertThat(ir.nodes()).hasSize(3);
-        assertThat(ir.edges()).hasSize(5);
+        assertThat(ir.edges()).hasSize(6);
     }
 
     @Test
@@ -72,6 +74,7 @@ class IrContractTest {
         assertThat(resolvedWrite.resolvedVia()).isEqualTo(ResolvedVia.DIRECT);
         assertThat(resolvedWrite.sqlId()).isEqualTo("8kyysdc8m75ag");
         assertThat(resolvedWrite.traceOrder()).isEqualTo(5);
+        assertThat(resolvedWrite.traceCount()).isEqualTo(1);
         assertThat(resolvedWrite.provenance()).containsExactly(Provenance.STATIC, Provenance.TRACE);
 
         Edge conditional = ir.edges().get(2);
@@ -88,6 +91,15 @@ class IrContractTest {
         assertThat(triggerInduced.viaTrigger()).isEqualTo("TRG_ORDER_AUDIT");
         assertThat(triggerInduced.from()).as("trigger edges start at the triggering table")
                 .isEqualTo(Node.tableId("APP", "ORDERS"));
+
+        Edge traceResolved = ir.edges().get(5);
+        assertThat(traceResolved.confidence()).isEqualTo(Confidence.TRACE_RESOLVED);
+        assertThat(traceResolved.resolves()).as("pairs with the dynamic-unknown edge it explains")
+                .isEqualTo(dynamic.id());
+        assertThat(traceResolved.provenance()).as("static never saw this target")
+                .containsExactly(Provenance.TRACE);
+        assertThat(traceResolved.step()).as("no position in the static walk").isNull();
+        assertThat(traceResolved.traceOrder()).isEqualTo(7);
     }
 
     @Test

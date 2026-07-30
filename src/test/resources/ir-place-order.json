@@ -4,7 +4,7 @@
     "db" : "TSCOPE_TEST",
     "entry_point" : "TSCOPE_TEST.PKG_ORDER.SUBMIT",
     "static_source" : {
-      "generated_at" : "2026-07-30T10:50:14.890517Z",
+      "generated_at" : "2026-07-30T10:36:15.870236Z",
       "units" : [ {
         "owner" : "TSCOPE_TEST",
         "name" : "PKG_DYNAMIC",

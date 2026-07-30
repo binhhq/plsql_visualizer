@@ -10,7 +10,15 @@ import com.example.plsqlvisualizer.model.Confidence;
 import com.example.plsqlvisualizer.model.Edge;
 import com.example.plsqlvisualizer.model.Ir;
 import com.example.plsqlvisualizer.model.IrJson;
+import com.example.plsqlvisualizer.model.Provenance;
+import com.example.plsqlvisualizer.model.TraceSource;
+import com.example.plsqlvisualizer.trace.TraceEvent;
+import com.example.plsqlvisualizer.trace.TraceMerger;
+import com.example.plsqlvisualizer.trace.TraceParser;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -25,6 +33,9 @@ import java.util.Map;
  *   --check     existing IR to test for staleness instead of extracting
  *   --refresh   existing IR to bring up to date, re-reading only what changed;
  *               rewritten in place unless --out names somewhere else
+ *   --trace     10046 trace file to overlay onto --ir; needs no database
+ *   --ir        the IR --trace annotates
+ *   --scenario  name recorded in meta.trace_source (default: the trace filename)
  * </pre>
  *
  * <p>The renderer consumes the output file and nothing else — it never touches
@@ -57,6 +68,18 @@ public final class Cli {
         if (refresh != null) {
             Path target = options.containsKey("out") ? out : Path.of(refresh);
             refresh(url, user, password, Path.of(refresh), target, entry);
+            return;
+        }
+
+        String trace = options.get("trace");
+        if (trace != null) {
+            String irFile = options.get("ir");
+            if (irFile == null) {
+                throw new IllegalArgumentException("--trace needs --ir <existing ir.json>");
+            }
+            Path target = options.containsKey("out") ? out : Path.of(irFile);
+            overlayTrace(Path.of(irFile), Path.of(trace), target,
+                    options.getOrDefault("scenario", Path.of(trace).getFileName().toString()));
             return;
         }
 
@@ -116,6 +139,40 @@ public final class Cli {
                 previous.edges() == null ? 0 : previous.edges().size(),
                 result.ir().edges().size());
         printSummary(result.ir(), out);
+    }
+
+    /** Overlays a 10046 trace on an existing IR. No database: the IR is the static truth. */
+    private static void overlayTrace(Path irFile, Path traceFile, Path out, String scenario)
+            throws Exception {
+        Ir ir = IrJson.read(irFile);
+        List<TraceEvent> events = new TraceParser().parse(traceFile);
+        Instant capturedAt = Files.getLastModifiedTime(traceFile).toInstant();
+
+        Ir merged = new TraceMerger(scenario, capturedAt).merge(ir, events);
+
+        long confirmed = merged.edges().stream()
+                .filter(e -> e.provenance() != null && e.provenance().contains(Provenance.TRACE))
+                .count();
+        long resolved = merged.edges().stream()
+                .filter(e -> e.confidence() == Confidence.TRACE_RESOLVED)
+                .count();
+        TraceSource source = merged.meta().traceSource();
+
+        System.out.printf("Trace %s (%d execution events)%n", traceFile, events.size());
+        System.out.printf("  scenario       : %s%n", scenario);
+        System.out.printf("  confirmed      : %d edges carry provenance trace%n", confirmed);
+        System.out.printf("  trace-resolved : %d write(s) only the trace could name%n", resolved);
+        if (source.notExecuted() != null) {
+            System.out.printf("  NOT executed   : %d statement(s) the run never reached%n",
+                    source.notExecuted());
+        }
+        if (source.unattributed() != null) {
+            System.out.printf("  unattributed   : %d write(s) seen but tied to no edge%n",
+                    source.unattributed());
+        }
+
+        IrJson.write(merged, out);
+        System.out.printf("Wrote %s%n", out.toAbsolutePath());
     }
 
     private static void printSummary(Ir ir, Path out) {

@@ -13,7 +13,16 @@ public enum Confidence {
     /** EXECUTE IMMEDIATE / DBMS_SQL, or a target that resolved to nothing (§4.4). */
     DYNAMIC_UNKNOWN("dynamic-unknown"),
     /** Found by the trigger pass, not present in the procedure's own statements (§4.5). */
-    TRIGGER_INDUCED("trigger-induced");
+    TRIGGER_INDUCED("trigger-induced"),
+    /**
+     * A write only a trace could name: the runtime showed the table a
+     * {@code dynamic-unknown} statement actually hit (§5).
+     *
+     * <p>These edges never replace the {@code dynamic-unknown} edge they explain —
+     * static genuinely cannot know that target, and one trace proves what happened
+     * once, not what happens. Both edges stay, and {@code resolves} links them.
+     */
+    TRACE_RESOLVED("trace-resolved");
 
     private final String value;
 

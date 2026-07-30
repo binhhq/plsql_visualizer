@@ -42,6 +42,33 @@ correctly has nothing left to special-case:
   the schema converges on it, so its in-degree grows with real code — it should
   not be laid out as an ordinary leaf.
 
+## The traced sample
+
+`ir-fixtures-traced.json` is the same IR with a real 10046 trace of the
+place-order flow overlaid (`--trace`, design.md §5). It is the file to develop
+trace-mode UI against, because it contains every case that mode has to handle:
+
+- 10 edges carrying `provenance: ["static","trace"]` with a dense `trace_order`;
+- the trigger-induced write ordered **after** the INSERT that fired it — the trace
+  file records it before, and untangling that is the parser's job, not the
+  renderer's;
+- one `trace-resolved` edge, `PKG_DYNAMIC.LOG_DYNAMIC → ORDER_LOG_202607`, with
+  `resolves` pointing at the `dynamic-unknown` edge it explains. Both edges exist:
+  static still cannot name that target, and one run is not proof of what the code
+  does;
+- `call` edges with no `trace_order` at all, because 10046 records SQL and not
+  PL/SQL control flow.
+
+For the "a write that never ran" case, overlay the other scenario instead —
+`src/test/resources/traces/place_order_hnx.trc` takes the other branch, so the
+guarded write stays `provenance: ["static"]` with no `trace_order` and
+`trace_source.not_executed` is 1.
+
+**Known gap:** the renderer's `trace_order` toggle is markup only — the button
+enables itself when a trace is present, but no handler is bound, so the graph
+cannot actually be re-ordered yet. Everything else in the renderer draws a traced
+IR unchanged (verified: 13 nodes, 15 edges, the new table and edge included).
+
 ## The renderer
 
 `renderer.html` is the delivered renderer — one self-contained file, no build, no

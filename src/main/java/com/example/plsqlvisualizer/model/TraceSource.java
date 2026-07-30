@@ -13,9 +13,17 @@ import java.time.Instant;
 public record TraceSource(
         @JsonProperty("present") boolean present,
         @JsonProperty("captured_at") Instant capturedAt,
-        @JsonProperty("scenario") String scenario) {
+        @JsonProperty("scenario") String scenario,
+        /** Statements in the IR the traced run never executed — a finding, not a gap. */
+        @JsonProperty("not_executed") Integer notExecuted,
+        /**
+         * Writes the trace saw that could not be tied to any edge. Reported rather
+         * than drawn: inventing a source node would be a guess about topology, and
+         * dropping the count silently would hide a write we know happened.
+         */
+        @JsonProperty("unattributed") Integer unattributed) {
 
     public static TraceSource absent() {
-        return new TraceSource(false, null, null);
+        return new TraceSource(false, null, null, null, null);
     }
 }
