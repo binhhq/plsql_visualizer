@@ -2,13 +2,9 @@ package com.example.plsqlvisualizer;
 
 import com.example.plsqlvisualizer.config.VisualizerProperties;
 import com.example.plsqlvisualizer.db.DictionaryClient;
-import com.example.plsqlvisualizer.db.ObjectRow;
-import com.example.plsqlvisualizer.db.UnitKey;
-import com.example.plsqlvisualizer.extract.DictionarySnapshot;
 import com.example.plsqlvisualizer.freshness.IrRefresher;
 import com.example.plsqlvisualizer.freshness.StalenessChecker;
 import com.example.plsqlvisualizer.freshness.StalenessReport;
-import com.example.plsqlvisualizer.graph.IrBuilder;
 import com.example.plsqlvisualizer.model.Confidence;
 import com.example.plsqlvisualizer.model.Edge;
 import com.example.plsqlvisualizer.model.Ir;
@@ -21,11 +17,7 @@ import com.example.plsqlvisualizer.trace.TraceParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Collection;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
@@ -45,13 +37,15 @@ import org.springframework.stereotype.Component;
  * the database (design.md §6).
  */
 @Component
-@Profile("!test")
+@Profile({"!test & !serve"})
 public class IrRunner implements ApplicationRunner {
 
     private final VisualizerProperties props;
+    private final ExtractionService extraction;
 
-    public IrRunner(VisualizerProperties props) {
+    public IrRunner(VisualizerProperties props, ExtractionService extraction) {
         this.props = props;
+        this.extraction = extraction;
     }
 
     @Override
@@ -89,59 +83,13 @@ public class IrRunner implements ApplicationRunner {
     }
 
     private void extract(Path out) throws Exception {
-        Ir ir;
-        try (DictionaryClient client = connect()) {
-            Collection<UnitKey> units = restrictTo(client);
-            ir = new IrBuilder(new DictionarySnapshot(client, units)).build(props.entry());
-        }
-
+        Ir ir = extraction.extract();
         IrJson.write(ir, out);
         printSummary(ir, out);
     }
 
-    /**
-     * Resolves {@code plsql.units} to the units the dictionary queries restrict
-     * to, or null for the whole schema.
-     *
-     * <p>Every trigger is added whatever was listed. Trigger writes arrive
-     * through the same per-unit statement query as everything else, so leaving
-     * them out of the restriction would silently drop the writes that appear in
-     * no procedure's source — the one thing this tool exists to surface.
-     */
-    private Collection<UnitKey> restrictTo(DictionaryClient client) throws Exception {
-        List<String> wanted = props.units();
-        if (wanted.isEmpty()) {
-            return null;
-        }
-
-        Set<UnitKey> units = new LinkedHashSet<>();
-        Set<String> seenNames = new LinkedHashSet<>();
-        int triggers = 0;
-        for (ObjectRow row : client.objects()) {
-            UnitKey unit = row.unit();
-            if (unit.isTrigger()) {
-                units.add(unit);
-                triggers++;
-            } else if (wanted.contains(unit.name().toUpperCase(Locale.ROOT))) {
-                units.add(unit);
-                seenNames.add(unit.name().toUpperCase(Locale.ROOT));
-            }
-        }
-
-        List<String> missing = wanted.stream().filter(n -> !seenNames.contains(n)).toList();
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "plsql.units names nothing in this schema: " + String.join(", ", missing));
-        }
-
-        System.out.printf("Reading %d requested unit(s) plus %d trigger(s); the rest of the"
-                + " schema is not queried.%n", units.size() - triggers, triggers);
-        return units;
-    }
-
     private DictionaryClient connect() throws Exception {
-        VisualizerProperties.Oracle db = props.oracle();
-        return DictionaryClient.connect(db.url(), db.username(), db.password());
+        return extraction.connect();
     }
 
     private void checkStaleness(Path irFile) throws Exception {
