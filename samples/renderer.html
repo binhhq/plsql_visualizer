@@ -151,7 +151,10 @@
   .canvas {
     flex: 1 1 460px; min-width: 0; position: relative;
     background: var(--ground);
+    overflow-x: auto; overflow-y: hidden;
   }
+  /* min-width is set per layout to the viewBox width, so a graph wider than the
+     pane scrolls at full size rather than shrinking its own labels away. */
   .canvas svg { display: block; width: 100%; height: auto; }
 
   .legend {
@@ -759,10 +762,21 @@
   var IR = JSON.parse(document.getElementById("ir-data").textContent);
 
   var SVG_NS = "http://www.w3.org/2000/svg";
-  var VIEW_W = 680;
-  var COL_A_X = 34, PROC_W = 208, PROC_H = 46, PROC_GAP = 24;
-  var COL_B_X = 468, TABLE_W = 158, TABLE_H = 42, TABLE_GAP = 22;
-  var TOP = 34;
+  // The flow runs top to bottom: program units on the upper row, the stores they
+  // write on the lower one. Both rows spread sideways, so the canvas grows wide
+  // rather than tall and the viewBox is measured per layout instead of fixed.
+  var MARGIN_X = 34;
+  var PROC_W = 152, PROC_H = 46, PROC_GAP = 20;
+  var TABLE_W = 134, TABLE_H = 42, TABLE_GAP = 18;
+  // Headroom above row A for the call arcs, which bow over the top of it.
+  var ROW_A_Y = 76;
+  // Enough room between the rows for a write edge to curve and still carry its
+  // operation label, guard text and ordinal without crowding either row.
+  var ROW_GAP = 190;
+  var ROW_B_Y = ROW_A_Y + PROC_H + ROW_GAP;
+  var ARC = 34;
+
+  var viewW = 680, viewH = 520;
 
   var allEdges = IR.edges.slice().sort(function (a, b) { return (a.step || 0) - (b.step || 0); });
   var nodeById = {};
@@ -920,18 +934,25 @@
     }).sort(byTouch);
 
     units.forEach(function (id, i) {
-      box[id] = { x: COL_A_X, y: TOP + i * (PROC_H + PROC_GAP), w: PROC_W, h: PROC_H, col: "A" };
+      box[id] = { x: MARGIN_X + i * (PROC_W + PROC_GAP), y: ROW_A_Y,
+                  w: PROC_W, h: PROC_H, row: "A" };
     });
     stores.forEach(function (id, i) {
-      box[id] = { x: COL_B_X, y: TOP + i * (TABLE_H + TABLE_GAP), w: TABLE_W, h: TABLE_H, col: "B" };
+      box[id] = { x: MARGIN_X + i * (TABLE_W + TABLE_GAP), y: ROW_B_Y,
+                  w: TABLE_W, h: TABLE_H, row: "B" };
     });
 
-    var height = Math.max(
-      TOP + units.length * (PROC_H + PROC_GAP),
-      TOP + stores.length * (TABLE_H + TABLE_GAP),
-      120
-    ) + 30;
-    document.getElementById("graph").setAttribute("viewBox", "0 0 " + VIEW_W + " " + height);
+    var rowW = function (n, w, gap) { return n ? n * w + (n - 1) * gap : 0; };
+    viewW = Math.max(
+      MARGIN_X * 2 + rowW(units.length, PROC_W, PROC_GAP),
+      MARGIN_X * 2 + rowW(stores.length, TABLE_W, TABLE_GAP),
+      600
+    );
+    // Room below row B for the table-to-table arcs a trigger produces.
+    viewH = ROW_B_Y + TABLE_H + ARC + 40;
+    var svg = document.getElementById("graph");
+    svg.setAttribute("viewBox", "0 0 " + viewW + " " + viewH);
+    svg.style.minWidth = viewW + "px";
   }
 
   // ---------------------------------------------------------------- roles
@@ -951,21 +972,26 @@
 
   function pathFor(e) {
     var a = box[e.from], b = box[e.to];
-    var ay = a.y + a.h / 2, by = b.y + b.h / 2;
+    var ax = a.x + a.w / 2, bx = b.x + b.w / 2;
 
-    if (a.col === "A" && b.col === "B") {
-      var x1 = a.x + a.w, x2 = b.x, mid = (x1 + x2) / 2;
-      return { d: "M" + x1 + "," + ay + " C" + mid + "," + ay + " " + mid + "," + by + " " + x2 + "," + by,
-               lx: mid, ly: (ay + by) / 2 };
+    // A write, running down from a unit into the store it touches.
+    if (a.row === "A" && b.row === "B") {
+      var y1 = a.y + a.h, y2 = b.y, mid = (y1 + y2) / 2;
+      return { d: "M" + ax + "," + y1 + " C" + ax + "," + mid + " " + bx + "," + mid + " " + bx + "," + y2,
+               lx: (ax + bx) / 2, ly: mid };
     }
-    if (a.col === "A" && b.col === "A") {
-      var bx = a.x - 24;
-      return { d: "M" + a.x + "," + ay + " C" + bx + "," + ay + " " + bx + "," + by + " " + b.x + "," + by,
-               lx: a.x - 16, ly: (ay + by) / 2 };
+    // A call between units: over the top of the row, so it never crosses the
+    // band the writes occupy.
+    if (a.row === "A" && b.row === "A") {
+      var over = a.y - ARC;
+      return { d: "M" + ax + "," + a.y + " C" + ax + "," + over + " " + bx + "," + over + " " + bx + "," + b.y,
+               lx: (ax + bx) / 2, ly: over + 4 };
     }
-    var rx = b.x + b.w + 30;
-    return { d: "M" + (a.x + a.w) + "," + ay + " C" + rx + "," + ay + " " + rx + "," + by + " " + (b.x + b.w) + "," + by,
-             lx: b.x + b.w + 20, ly: (ay + by) / 2 };
+    // Store to store — a trigger's write. Under the row, for the same reason.
+    var under = a.y + a.h + ARC;
+    return { d: "M" + ax + "," + (a.y + a.h) + " C" + ax + "," + under + " " + bx + "," + under
+                + " " + bx + "," + (b.y + b.h),
+             lx: (ax + bx) / 2, ly: under + 4 };
   }
 
   // Fractions along an edge an ordinal disc may occupy, in order of preference.
@@ -1128,7 +1154,7 @@
         var at = seqPoint(stroke, p, seqPlaced, 2 * r + 3);
         // Keep the disc wholly inside the viewBox: the proc-to-proc call paths
         // bow out to x = a.x - 24, which is close enough to 0 to clip.
-        var cx = Math.max(r + 2, Math.min(VIEW_W - r - 2, at.x));
+        var cx = Math.max(r + 2, Math.min(viewW - r - 2, at.x));
         seqPlaced.push({ x: cx, y: at.y });
         g.appendChild(el("circle", { cx: cx, cy: at.y, r: r, class: "seq-bg" }));
         var sn = el("text", { x: cx, y: at.y + 3.2, "text-anchor": "middle", class: "e-seq" });
