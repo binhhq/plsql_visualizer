@@ -55,9 +55,14 @@ global.clearTimeout = () => {};
 const IR = JSON.parse(irText(src));
 idEl("ir-data").textContent = irText(src);
 
-const s = src.indexOf('(function () {\n  "use strict";');
+// The drawing engine, found by its marker — the page also carries a unit-loader
+// script ahead of it that only makes sense against a live server.
+const marker = src.indexOf("/* renderer:main");
+const s = src.indexOf('(function () {\n  "use strict";', marker);
 const e = src.indexOf("})();", s) + 5;
-if (s < 0 || e < 5) throw new Error("cannot locate the renderer IIFE — the anchors moved");
+if (marker < 0 || s < 0 || e < 5) {
+  throw new Error("cannot locate the renderer IIFE — the anchors moved");
+}
 eval(src.slice(s, e));
 
 // ---- what the embedded IR contains ---------------------------------------

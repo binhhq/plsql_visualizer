@@ -45,6 +45,24 @@ public record VisualizerProperties(
          */
         @DefaultValue List<String> units,
 
+        /**
+         * Call-graph hops to follow out from a named unit when scoping.
+         *
+         * <p>0 reads the named unit alone, which leaves every call out of it as a
+         * stub node whose writes are invisible. 2 is the useful default: far
+         * enough to show what the unit really causes, near enough that each hop is
+         * still one bounded query rather than a widening scan.
+         */
+        @DefaultValue("2") int depth,
+
+        /**
+         * Ceiling on how many units one scope may reach. A densely connected
+         * schema can put most of itself within two hops of anything, and that has
+         * to degrade into a truncated graph the renderer labels as such, never
+         * into the schema-wide read that scoping exists to avoid.
+         */
+        @DefaultValue("400") int maxUnits,
+
         /** Where to write. Null means "let the task choose" — see the class note. */
         Path out,
 

@@ -29,15 +29,26 @@ plsql:
   # Library units to read from the dictionary. Empty reads the whole schema,
   # which means USER_IDENTIFIERS and USER_STATEMENTS are scanned end to end —
   # minutes, on a schema with thousands of objects, with no output until it ends.
+  # Under the serve profile you do not need this at all: the page starts empty
+  # and the search box names the unit per request.
   #
   # Names only; every object type carrying that name is included, so a package
-  # brings both its spec and its body. Every trigger is added on top whatever is
-  # listed here: trigger writes arrive through the same per-unit query, and
-  # dropping them would hide precisely the writes that appear in no procedure's
-  # own source.
+  # brings both its spec and its body. From each name the scope also follows
+  # `depth` call hops, and then the triggers standing on whatever all of that
+  # writes — trigger writes appear in no procedure's own source, so leaving them
+  # out would hide exactly what this tool exists to show.
   #
   #   units: [PKG_ORDER, PKG_POSITION]
   units: []
+
+  # Call-graph hops to follow out from a named unit. 0 reads it alone, which
+  # leaves every call out of it as a stub whose writes are invisible.
+  depth: 2
+
+  # Ceiling on how many units one scope may reach. A densely connected schema can
+  # put most of itself within two hops of anything; that degrades into a
+  # truncated graph, never into the schema-wide read scoping exists to avoid.
+  max-units: 400
 
   # The schema to analyse, and the credentials to read it with. The extractor
   # connects AS the schema it inspects: the dictionary queries use USER_* views.
@@ -74,10 +85,15 @@ plsql:
 # ---------------------------------------------------------------------------
 # Long-running service:  --spring.profiles.active=serve
 #
-#   GET  /              the renderer, with this schema's IR injected
-#   GET  /api/ir        that IR as JSON
-#   POST /api/extract   re-read the schema and replace the held IR
-#   GET  /api/health    liveness, and whether an IR is loaded yet
+#   GET  /?unit=PKG_ORDER   the renderer, carrying that unit's graph
+#   GET  /                  the renderer, empty — the search box loads a unit
+#   GET  /api/units?q=ORD   units whose name matches, for the search box
+#   GET  /api/ir?unit=…     one unit's graph as JSON
+#   POST /api/extract       read the WHOLE schema — minutes, on a large one
+#   GET  /api/health        liveness, and what is currently held
+#
+# Nothing touches the dictionary until a unit is named. The page load that used
+# to extract the entire schema is why this never started against a real database.
 #
 # There is no port in the default profile because nothing listens there: the
 # default is a run-once tool that extracts and exits. Setting server.port
@@ -89,6 +105,13 @@ spring:
       on-profile: serve
   main:
     web-application-type: servlet
+  mvc:
+    problemdetails:
+      # The failures here are things a person has to act on — a mistyped unit
+      # name, a database with no listener. Without this the client gets a bare
+      # status code, and "ORA-12541: no listener" is the entire value of the
+      # response. RFC 7807 puts it in `detail`.
+      enabled: true
 
 server:
   port: ${PORT:8080}

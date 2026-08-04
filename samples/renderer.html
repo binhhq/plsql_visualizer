@@ -307,6 +307,23 @@
   .proc-menu .none { color: var(--muted); cursor: default; font-style: italic; }
   .proc-menu .none:hover { background: none; }
 
+  /* Schema-wide unit search. Visually distinct from the procedure typeahead
+     next to it, because the two do genuinely different things: that one moves
+     focus inside the graph on screen, this one goes and fetches a different
+     graph. The kind badge earns its place — PKG_ORDER the package body and
+     PKG_ORDER the trigger are different units with the same name. */
+  .unit-menu .kind {
+    float: right; font-size: 9.5px; letter-spacing: .04em;
+    color: var(--muted); padding-left: 10px;
+  }
+  .unit-menu .hint { color: var(--muted); cursor: default; font-style: italic; }
+  .unit-menu .hint:hover { background: none; }
+  #unit-search { width: 190px; }
+  .finder.loading::after {
+    content: "…"; position: absolute; right: 8px; top: 50%;
+    transform: translateY(-50%); color: var(--muted); pointer-events: none;
+  }
+
   .scope-chip {
     display: none; align-items: center; gap: 7px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -355,6 +372,18 @@
       <small id="entry-label"></small>
     </div>
 
+    <!-- Loads a graph. Nothing is read from the database until a unit is named
+         here, which is what keeps a schema with a hundred thousand objects
+         openable at all. -->
+    <div class="finder" id="unit-finder" hidden>
+      <input type="search" id="unit-search" autocomplete="off" role="combobox"
+             aria-expanded="false" aria-controls="unit-menu" aria-autocomplete="list"
+             placeholder="load a package…" aria-label="Load a unit from the schema" />
+      <ul class="proc-menu unit-menu" id="unit-menu" role="listbox"
+          aria-label="Matching units in the schema"></ul>
+    </div>
+
+    <!-- Moves focus within the graph already on screen. -->
     <div class="finder">
       <input type="search" id="search" autocomplete="off" role="combobox"
              aria-expanded="false" aria-controls="proc-menu" aria-autocomplete="list"
@@ -756,6 +785,188 @@
 </script>
 
 <script>
+/*
+ * Schema-wide unit loader.
+ *
+ * Deliberately standalone and ahead of the renderer proper: it talks to the
+ * server, not to the graph, and everything below this block still works on a
+ * renderer.html opened straight off disk with an IR baked into it.
+ *
+ * Selecting a unit navigates rather than swapping the IR in place. The server
+ * already injects the graph at GET /, so a plain page load is the whole of it —
+ * and a URL that names its own scope is one that can be linked, bookmarked and
+ * reloaded, which an in-place swap would have thrown away.
+ */
+(function () {
+  "use strict";
+
+  var finder = document.getElementById("unit-finder");
+  var input = document.getElementById("unit-search");
+  var menu = document.getElementById("unit-menu");
+  if (!finder || !input || !menu) return;
+
+  var matches = [];
+  var cursor = -1;
+  var pending = null;
+  var timer = null;
+
+  function param(name) {
+    var found = new RegExp("[?&]" + name + "=([^&]*)").exec(location.search);
+    return found ? decodeURIComponent(found[1].replace(/\+/g, " ")) : null;
+  }
+
+  /* Only offer the box when there is a server behind it. Opened as a file, the
+     page is a viewer for the IR it already carries and has nothing to search. */
+  function enableIfServed() {
+    if (location.protocol === "file:") return;
+    fetch("api/health", { headers: { Accept: "application/json" } })
+      .then(function (r) { if (r.ok) finder.hidden = false; })
+      .catch(function () { /* no server: leave the box hidden */ });
+  }
+
+  function closeMenu() {
+    menu.classList.remove("open");
+    menu.textContent = "";
+    input.setAttribute("aria-expanded", "false");
+    matches = [];
+    cursor = -1;
+  }
+
+  function markCursor() {
+    Array.prototype.forEach.call(menu.children, function (li, i) {
+      li.classList.toggle("active", i === cursor);
+      li.setAttribute("aria-selected", i === cursor ? "true" : "false");
+    });
+  }
+
+  function note(text) {
+    menu.textContent = "";
+    var li = document.createElement("li");
+    li.classList.add("hint");
+    li.textContent = text;
+    menu.appendChild(li);
+    menu.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+    matches = [];
+    cursor = -1;
+  }
+
+  function load(name) {
+    var depth = param("depth");
+    location.search = "?unit=" + encodeURIComponent(name) + (depth ? "&depth=" + depth : "");
+  }
+
+  function render(units, query) {
+    matches = units;
+    if (!units.length) {
+      note('nothing in this schema matches "' + query + '"');
+      return;
+    }
+    menu.textContent = "";
+    units.forEach(function (u, i) {
+      var li = document.createElement("li");
+      li.setAttribute("role", "option");
+      var kind = document.createElement("span");
+      kind.classList.add("kind");
+      kind.textContent = u.type;
+      var name = document.createElement("span");
+      name.classList.add("pkg");
+      name.textContent = u.name;
+      li.appendChild(kind);
+      li.appendChild(name);
+      // mousedown, not click: blurring the input on click would close the menu
+      // before the selection lands.
+      li.addEventListener("mousedown", function (ev) { ev.preventDefault(); load(u.name); });
+      li.addEventListener("mouseenter", function () { cursor = i; markCursor(); });
+      menu.appendChild(li);
+    });
+    cursor = 0;
+    markCursor();
+    menu.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function search(query) {
+    if (pending) pending.abort();
+    pending = new AbortController();
+    finder.classList.add("loading");
+    fetch("api/units?q=" + encodeURIComponent(query) + "&limit=20",
+          { signal: pending.signal, headers: { Accept: "application/json" } })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        // The server sends the database's own words for an unreachable schema;
+        // "ORA-12541: no listener" tells you what to go and fix, "503" does not.
+        return r.json().then(
+          function (body) {
+            throw new Error(body.detail || body.message || "search failed (" + r.status + ")");
+          },
+          function () { throw new Error("search failed (" + r.status + ")"); });
+      })
+      .then(function (units) {
+        finder.classList.remove("loading");
+        // A slower earlier request must not overwrite a newer query's results.
+        if (input.value.trim() === query) render(units, query);
+      })
+      .catch(function (e) {
+        if (e.name === "AbortError") return;
+        finder.classList.remove("loading");
+        note(e.message);
+      });
+  }
+
+  input.addEventListener("input", function () {
+    window.clearTimeout(timer);
+    var value = input.value.trim();
+    if (!value) { closeMenu(); return; }
+    // Debounced: every keystroke is a round trip, and the dictionary is the one
+    // thing here worth being frugal with.
+    timer = window.setTimeout(function () { search(value); }, 180);
+  });
+
+  input.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      // Enter without a highlighted row still loads what was typed — the server
+      // resolves the name, and a 404 there says more than a silent no-op here.
+      if (matches[cursor]) load(matches[cursor].name);
+      else if (input.value.trim()) load(input.value.trim());
+      return;
+    }
+    if (!menu.classList.contains("open")) return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!matches.length) return;
+      cursor = (cursor + (ev.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+      markCursor();
+    } else if (ev.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  input.addEventListener("blur", function () { window.setTimeout(closeMenu, 120); });
+
+  var current = param("unit");
+  if (current) input.value = current;
+
+  /* An empty graph on a served page means nothing has been picked yet, which is
+     a different thing from an IR that genuinely has no edges. The renderer below
+     cannot tell the two apart; here it is simply which page this is. */
+  if (!current && location.protocol !== "file:") {
+    var noscope = document.getElementById("noscope");
+    if (noscope) {
+      noscope.dataset.emptyHint =
+        "Nothing loaded yet — search for a package above to build its graph.";
+    }
+  }
+
+  enableIfServed();
+})();
+</script>
+
+<script>
+/* renderer:main — the drawing engine. The tests anchor on this marker: there is
+   more than one script in this page now, and "the first IIFE" stopped being a
+   way to say which one. */
 (function () {
   "use strict";
 
@@ -1221,9 +1432,13 @@
     var empty = scope.edges.length === 0;
     canvas.classList.toggle("empty", empty);
     if (empty) {
-      document.getElementById("noscope").textContent =
+      var noscope = document.getElementById("noscope");
+      // The loader above leaves a hint when the page is served and nothing has
+      // been picked yet — "no unit chosen" and "this unit writes nothing" both
+      // arrive here as zero edges, and only it knows which happened.
+      noscope.textContent =
         query ? 'No package matches "' + query + '". Packages in this IR: ' + packages.join(", ")
-              : "This IR has no edges.";
+              : (noscope.dataset.emptyHint || "This IR has no edges.");
       layerNodes.textContent = "";
       layerEdges.textContent = "";
       scrub.max = "0";

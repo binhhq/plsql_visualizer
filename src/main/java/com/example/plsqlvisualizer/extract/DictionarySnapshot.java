@@ -55,6 +55,20 @@ public class DictionarySnapshot {
     }
 
     /**
+     * A snapshot for a scoped extraction: like the constructor below, but the
+     * object list is narrowed too.
+     *
+     * <p>That list becomes {@code meta.static_source.units}. A refresh needs it
+     * whole — it is the record every later staleness check is compared against —
+     * but a scoped graph is not a claim about the schema, and shipping a hundred
+     * thousand unit names inside a graph of six would dwarf the graph itself.
+     */
+    public static DictionarySnapshot scoped(DictionaryClient client, Collection<UnitKey> units)
+            throws SQLException {
+        return new DictionarySnapshot(client, units, true);
+    }
+
+    /**
      * A snapshot narrowed to a few units, for the incremental refresh (design.md §7).
      *
      * <p>Only the per-unit views are restricted. Synonyms and triggers are
@@ -71,6 +85,11 @@ public class DictionarySnapshot {
      */
     public DictionarySnapshot(DictionaryClient client, Collection<UnitKey> units)
             throws SQLException {
+        this(client, units, false);
+    }
+
+    private DictionarySnapshot(DictionaryClient client, Collection<UnitKey> units,
+                               boolean scopedObjects) throws SQLException {
         this.schema = client.schema();
         // Timed one query at a time. Unrestricted, these read USER_IDENTIFIERS and
         // USER_STATEMENTS across the whole schema, which on a large one takes long
@@ -79,9 +98,21 @@ public class DictionarySnapshot {
         this.writes = timed("writes", () -> client.writes(units));
         this.calls = timed("calls", () -> client.calls(units));
         this.statements = timed("statements", () -> client.statements(units));
-        this.synonyms = timed("synonyms", client::synonyms);
-        this.triggers = timed("triggers", client::triggers);
-        this.objects = timed("objects", client::objects);
+        // Synonyms follow the restriction: only the ones these units actually name
+        // can resolve any of their write targets, and a production database
+        // routinely carries tens of thousands of PUBLIC synonyms that no graph of
+        // a few packages will ever mention.
+        this.synonyms = timed("synonyms", () -> client.synonyms(units));
+        // Only ever used as a name → triggering-table lookup for triggers whose
+        // writes are already in this snapshot, so restricting it to the triggers
+        // in scope is the same map, minus a full scan of USER_TRIGGERS.
+        this.triggers = timed("triggers", () -> units == null
+                ? client.triggers()
+                : client.triggersNamed(units.stream()
+                        .filter(UnitKey::isTrigger)
+                        .map(UnitKey::name)
+                        .toList()));
+        this.objects = timed("objects", () -> client.objects(scopedObjects ? units : null));
         this.source = timedByUnit("source", () -> client.source(units));
 
         for (IdentifierRow row : timed("identifiers", () -> client.identifiers(units))) {
