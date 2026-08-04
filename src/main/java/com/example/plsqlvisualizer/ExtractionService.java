@@ -2,15 +2,14 @@ package com.example.plsqlvisualizer;
 
 import com.example.plsqlvisualizer.config.VisualizerProperties;
 import com.example.plsqlvisualizer.db.DictionaryClient;
-import com.example.plsqlvisualizer.db.ObjectRow;
 import com.example.plsqlvisualizer.db.UnitKey;
 import com.example.plsqlvisualizer.extract.DictionarySnapshot;
+import com.example.plsqlvisualizer.extract.ScopeResolver;
 import com.example.plsqlvisualizer.graph.IrBuilder;
 import com.example.plsqlvisualizer.model.Ir;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -30,8 +29,40 @@ public class ExtractionService {
 
     public Ir extract() throws Exception {
         try (DictionaryClient client = connect()) {
-            return new IrBuilder(new DictionarySnapshot(client, restrictTo(client)))
-                    .build(props.entry());
+            Collection<UnitKey> units = restrictTo(client);
+            DictionarySnapshot snapshot = units == null
+                    ? new DictionarySnapshot(client, null)
+                    : DictionarySnapshot.scoped(client, units);
+            return new IrBuilder(snapshot).build(props.entry());
+        }
+    }
+
+    /**
+     * The graph reachable from one named unit — the on-demand path the search box
+     * drives, and the only one that is tractable against a large schema.
+     *
+     * @param unitName package, procedure, function or trigger name, as typed
+     * @param depth call-graph hops to follow; null uses {@code plsql.depth}
+     */
+    public Scoped extractScoped(String unitName, Integer depth) throws Exception {
+        try (DictionaryClient client = connect()) {
+            ScopeResolver.Scope scope = ScopeResolver.resolve(client, unitName,
+                    depth == null ? props.depth() : depth, props.maxUnits());
+            // No entry point: the seed is a unit, not a subprogram, so the walk
+            // starts where it always does — at whatever nothing in scope calls.
+            Ir ir = new IrBuilder(DictionarySnapshot.scoped(client, scope.units())).build(null);
+            return new Scoped(ir, scope);
+        }
+    }
+
+    /** A scoped IR together with what the scoping pass decided to read. */
+    public record Scoped(Ir ir, ScopeResolver.Scope scope) {
+    }
+
+    /** Units matching what has been typed so far, for the search box. */
+    public List<UnitKey> searchUnits(String needle, int limit) throws Exception {
+        try (DictionaryClient client = connect()) {
+            return client.searchUnits(needle, limit);
         }
     }
 
@@ -44,10 +75,12 @@ public class ExtractionService {
      * Resolves {@code plsql.units} to the units the dictionary queries restrict
      * to, or null for the whole schema.
      *
-     * <p>Every trigger is added whatever was listed. Trigger writes arrive
-     * through the same per-unit statement query as everything else, so leaving
-     * them out of the restriction would silently drop the writes that appear in
-     * no procedure's source — the one thing this tool exists to surface.
+     * <p>Triggers are pulled in by {@link ScopeResolver}, which adds the ones
+     * standing on tables the listed units write. Trigger writes appear in no
+     * procedure's source, so leaving them out entirely would hide exactly what
+     * this tool exists to surface — but adding <em>every</em> trigger in the
+     * schema, as this once did, makes the restriction almost worthless on a
+     * database with thousands of them.
      */
     public Collection<UnitKey> restrictTo(DictionaryClient client) throws Exception {
         List<String> wanted = props.units();
@@ -55,28 +88,16 @@ public class ExtractionService {
             return null;
         }
 
+        // ScopeResolver throws by name when a listed unit does not exist, which
+        // says more than a collected "these were missing" ever did.
         Set<UnitKey> units = new LinkedHashSet<>();
-        Set<String> seenNames = new LinkedHashSet<>();
-        int triggers = 0;
-        for (ObjectRow row : client.objects()) {
-            UnitKey unit = row.unit();
-            if (unit.isTrigger()) {
-                units.add(unit);
-                triggers++;
-            } else if (wanted.contains(unit.name().toUpperCase(Locale.ROOT))) {
-                units.add(unit);
-                seenNames.add(unit.name().toUpperCase(Locale.ROOT));
-            }
+        for (String name : wanted) {
+            units.addAll(ScopeResolver.resolve(client, name, props.depth(), props.maxUnits())
+                    .units());
         }
 
-        List<String> missing = wanted.stream().filter(n -> !seenNames.contains(n)).toList();
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "plsql.units names nothing in this schema: " + String.join(", ", missing));
-        }
-
-        System.out.printf("Reading %d requested unit(s) plus %d trigger(s); the rest of the"
-                + " schema is not queried.%n", units.size() - triggers, triggers);
+        System.out.printf("Reading %d unit(s) reachable from %s; the rest of the"
+                + " schema is not queried.%n", units.size(), String.join(", ", wanted));
         return units;
     }
 }

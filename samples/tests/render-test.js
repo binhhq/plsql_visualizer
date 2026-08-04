@@ -52,10 +52,15 @@ global.clearTimeout = () => {};
 // Seed the IR the script parses out of the DOM.
 idEl("ir-data").textContent = irText(src);
 
-// Pull the real IIFE and run it.
-const s = src.indexOf('(function () {\n  "use strict";');
+// Pull the real IIFE and run it. The page also carries a unit-loader script,
+// which is a browser thing — it talks to the server, not to the graph — so the
+// drawing engine is found by its own marker rather than by being first.
+const marker = src.indexOf("/* renderer:main");
+const s = src.indexOf('(function () {\n  "use strict";', marker);
 const e = src.indexOf("})();", s) + 5;
-if (s < 0 || e < 5) throw new Error("cannot locate the renderer IIFE — the anchors moved");
+if (marker < 0 || s < 0 || e < 5) {
+  throw new Error("cannot locate the renderer IIFE — the anchors moved");
+}
 eval(src.slice(s, e));
 
 // ---- drive it -------------------------------------------------------------

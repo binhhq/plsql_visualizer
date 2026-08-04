@@ -2,6 +2,8 @@ package com.example.plsqlvisualizer.extract;
 
 import com.example.plsqlvisualizer.model.Reachability;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -24,9 +26,6 @@ public class ReachabilityAnalyzer {
     private enum BlockKind { IF, LOOP }
 
     private record Block(BlockKind kind, int startLine, int endLine, String guard) {
-        boolean contains(int line) {
-            return line >= startLine && line <= endLine;
-        }
     }
 
     private record Token(String word, int line, int col) {
@@ -34,8 +33,49 @@ public class ReachabilityAnalyzer {
 
     private final List<Block> blocks;
 
+    /**
+     * Innermost block per source line, as an index into {@link #blocks}, or -1.
+     *
+     * <p>Built once instead of searched per statement. Scanning every block for
+     * every statement is quadratic in the size of a unit, and a generated package
+     * body of twenty thousand lines makes that the slowest thing in the
+     * extraction — the blocks are known up front, so the answer may as well be.
+     */
+    private final int[] innermostByLine;
+
     public ReachabilityAnalyzer(List<String> sourceLines) {
         this.blocks = findBlocks(sourceLines);
+        this.innermostByLine = indexByLine(blocks, sourceLines.size());
+    }
+
+    /**
+     * Stamps each block across the lines it spans, outermost first. Blocks nest,
+     * so a block opening later is inside the one before it and its stamp is the
+     * one that should survive — sorting by start line makes overwriting do that
+     * for free.
+     */
+    private static int[] indexByLine(List<Block> blocks, int lineCount) {
+        int lastLine = lineCount;
+        for (Block block : blocks) {
+            lastLine = Math.max(lastLine, block.endLine());
+        }
+        int[] index = new int[lastLine + 1];
+        Arrays.fill(index, -1);
+
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < blocks.size(); i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.comparingInt(i -> blocks.get(i).startLine()));
+
+        for (int i : order) {
+            Block block = blocks.get(i);
+            for (int line = Math.max(1, block.startLine());
+                 line <= Math.min(lastLine, block.endLine()); line++) {
+                index[line] = i;
+            }
+        }
+        return index;
     }
 
     /**
@@ -62,13 +102,11 @@ public class ReachabilityAnalyzer {
     }
 
     private Block innermostContaining(int line) {
-        Block best = null;
-        for (Block block : blocks) {
-            if (block.contains(line) && (best == null || block.startLine() >= best.startLine())) {
-                best = block;
-            }
+        if (line < 1 || line >= innermostByLine.length) {
+            return null;
         }
-        return best;
+        int at = innermostByLine[line];
+        return at < 0 ? null : blocks.get(at);
     }
 
     private static List<Block> findBlocks(List<String> rawLines) {
